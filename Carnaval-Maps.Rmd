@@ -1,0 +1,145 @@
+---
+title: "Carnaval phylogeography data exploration"
+output: html_notebook
+---
+Here are some maps exploring Carnaval et al data. I have two sets of maps: Maps with all of the observations (All observations tab) and maps with cells where there are at least three individuals per species (>= 3 species tabs).
+
+First I'm reading in the packages and setting my working directory where the data is, and reading in the data.
+```{r, results='hide'}
+packages <- c("magrittr", "tidyverse", "sf", "leaflet", "maps", "ggmap", "viridis")
+lapply(packages, require, character.only = TRUE)
+
+setwd("/Users/connorfrench/Dropbox/Old_Mac/School_Stuff/CUNY/BigAss-bird-phylogeography")
+
+#read in data
+carnaval_data <- read.csv("Carnaval-et-al-GPS.csv")
+```
+
+Taking a look at the head and structure of the data set.
+```{r}
+head(carnaval_data)
+str(carnaval_data)
+```
+
+  
+Now time for the map! This is of all of our South American localities colored according to country to find outlier/mislabeled points.
+
+```{r}
+#convert locality data to a spatial object. The spatial object is basically a shape file that the mapping function can interpret. 
+coord_points <- st_as_sf(carnaval_data, coords = c("Long", "Lat"), 
+                         crs = 4326, agr = "constant")
+
+#load a world map as the base map.
+w_map <- map("world", plot = FALSE)
+
+#make color palette
+pal <- colorFactor(palette = "inferno", domain = NULL)
+
+#create popup labels for points
+popup_label <- paste(coord_points$Genus, coord_points$Species, "<br>",
+                     coord_points$geometry)
+
+#plot in leafly
+leaflet(data = w_map) %>% 
+  addTiles() %>%
+  addCircleMarkers(data = coord_points,
+                  color = ~pal(Genus),
+                  radius = 5,
+                  popup = popup_label) %>%
+  addLegend(data = coord_points, pal = pal, values = ~Genus, opacity = .9)
+```
+
+
+Now I'm going to apply various filters to the data to look at sampling intensity. First I'm going to plot maps where localities with less than three observations are grey and three or more observations are red. This is irrespective of species, and is intended to provide a course idea of where we know there can't be 3 or more observations for a species per locality.
+
+##Sampling Maps {.tabset}
+
+###All Observations
+Here's a 1 degree (~100 km x 100 km at equator) grid resolution. 
+```{r}
+#Acquire a base map that's compatible with ggmap (the maps you get from the map() function aren't compatible with ggmap). This is the best resolution I can get to visualize all of South America.
+sa_map <- get_map(location = c(-67.9037, -23.0301), source = "google", zoom = 3, maptype = "satellite")
+
+sa_all_binary_100 <- ggmap(sa_map) + 
+  stat_bin2d(data = carnaval_data, aes(x = Long, y = Lat), binwidth = c(1, 1)) + 
+  scale_fill_gradientn(lim = c(3,200), colors = "red") + 
+  guides(fill = FALSE)
+
+sa_all_binary_100
+
+```
+
+Here's a 2 degree (~ 220 km x 220 km) grid resolution.
+```{r}
+sa_all_binary_200 <- ggmap(sa_map) + 
+  stat_bin2d(data = carnaval_data, aes(x = Long, y = Lat), binwidth = c(2, 2)) + 
+  scale_fill_gradientn(lim = c(3,200), colors = "red") + 
+  guides(fill = FALSE)
+
+sa_all_binary_200
+```
+
+
+Here's a 3 degree resolution.
+```{r}
+sa_all_binary_300 <- ggmap(sa_map) + 
+  stat_bin2d(data = carnaval_data, aes(x = Long, y = Lat), binwidth = c(3, 3)) + 
+  scale_fill_gradientn(lim = c(3,200), colors = "red") + 
+  guides(fill = FALSE)
+
+sa_all_binary_300
+```
+
+
+###>=3 per species 100 km
+The Carnaval data set doesn't have exact repeats of localities. Instead of filtering for greater than 2 observations for each species per specific locality, I'm going to plot the binary density plots for each species at each cell resolution. To be clear, this is showing the cells where the are >=3 observations for the species
+
+100 km resolution
+```{r}
+species <- unique(carnaval_data$Species)
+
+for (i in species) {
+  data <- carnaval_data[carnaval_data$Species == i,]
+  sa_plot <- ggmap(sa_map) + 
+     stat_bin2d(data = data, aes(x = Long, y = Lat), binwidth = c(1, 1)) + 
+     scale_fill_gradientn(lim = c(3,200), colors = "red") + 
+     guides(fill = FALSE) + 
+     ggtitle(paste(data$Genus, i))
+  print(sa_plot)
+}
+
+```
+
+###>=3 per species 200 km
+200 km resolution
+```{r}
+species <- unique(carnaval_data$Species)
+
+for (i in species) {
+  data <- carnaval_data[carnaval_data$Species == i,]
+  sa_plot <- ggmap(sa_map) + 
+     stat_bin2d(data = data, aes(x = Long, y = Lat), binwidth = c(2, 2)) + 
+     scale_fill_gradientn(lim = c(3,200), colors = "red") + 
+     guides(fill = FALSE) + 
+     ggtitle(paste(data$Genus, i))
+  print(sa_plot)
+}
+
+```
+
+###>=3 per species 300 km
+200 km resolution
+```{r}
+species <- unique(carnaval_data$Species)
+
+for (i in species) {
+  data <- carnaval_data[carnaval_data$Species == i,]
+  sa_plot <- ggmap(sa_map) + 
+     stat_bin2d(data = data, aes(x = Long, y = Lat), binwidth = c(3, 3)) + 
+     scale_fill_gradientn(lim = c(3,200), colors = "red") + 
+     guides(fill = FALSE) + 
+     ggtitle(paste(data$Genus, i))
+  print(sa_plot)
+}
+
+```

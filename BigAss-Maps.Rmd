@@ -1,0 +1,283 @@
+---
+title: "BigAss bird phylogeography data exploration"
+output: html_notebook
+---
+Here are some maps exploring our bird data. I have three sets of maps: Maps with all of the observations (All observations tab), maps only with localities where there are at least three individuals per species (>= 3 species tab), and maps that show the species density, rather than observation density (Species density tab). Let me know if y'all want me to map things differently too! Laura, this should be adaptable to exploring other data sets and we can sit down together if my code comments aren't clear.
+
+First I'm reading in the packages and setting my working directory where the data is, and reading in the data.
+```{r, results='hide'}
+packages <- c("magrittr", "tidyverse", "sf", "leaflet", "maps", "ggmap", "viridis")
+lapply(packages, require, character.only = TRUE)
+
+setwd("/Users/connorfrench/Dropbox/Old_Mac/School_Stuff/CUNY/BigAss-bird-phylogeography")
+
+#read in data
+bird_data <- read.csv("sample_key_68_clean.csv")
+```
+
+Taking a look at the head and structure of the data set.
+```{r}
+head(bird_data)
+str(bird_data)
+```
+
+
+
+I'm removing all of the irrelevant columns for mapping, I'm only keeping ingroup individuals, and I'm removing all localities that aren't in South America.
+
+```{r}
+#remove irrelevant columns, NAs, North American/European localities,and subset for ingroup individuals. orig # obs = 18954; filtered # obs = 2825
+bird_data <- subset(bird_data, select = c("Country", "State", "Locality", "Genus", "Species", "Ingroup", "Lat", "Long")) %>%
+  subset(Ingroup == "y") %>%
+  subset(Lat < 12.5) %>%
+  subset(!(Country %in% c("Mexico", "Cuba", "Bahamas", "Dominican Republic", "Nicaragua", "Costa Rica", "Panama"))) %>% 
+  na.omit() %>%
+  droplevels.data.frame()
+```
+
+Let's take a look at our data after filtering. Of note: I forgot to drop the levels before looking at the data for our 9-12-18 meeting, and vastly overestimated the number of species we had. It's actually 68. The original number of observations was 18954, and the filtered number of observations is 2825.
+
+```{r}
+head(bird_data)
+str(bird_data)
+```
+
+  
+Now time for the map! This is of all of our South American localities colored according to country to find outlier/mislabeled points.
+
+```{r}
+#convert locality data to a spatial object. The spatial object is basically a shape file that the mapping function can interpret. 
+coord_points <- st_as_sf(bird_data, coords = c("Long", "Lat"), 
+                         crs = 4326, agr = "constant")
+
+#load a world map as the base map.
+w_map <- map("world", plot = FALSE)
+
+#make color palette
+pal <- colorFactor(palette = "inferno", domain = NULL)
+
+#create popup labels for points
+popup_label <- paste(coord_points$Genus, coord_points$Species, "<br>",
+                     coord_points$Country, "<br>",
+                     coord_points$Locality, "<br>",
+                     coord_points$geometry)
+
+#plot in leafly
+leaflet(data = w_map) %>% 
+  addTiles() %>%
+  addCircleMarkers(data = coord_points,
+                  color = ~pal(Country),
+                  radius = 5,
+                  popup = popup_label)
+```
+
+
+Now I'm going to apply various filters to the data to look at sampling intensity. First I'm going to plot maps where localities with less than three observations are grey and three or more observations are red. This is irrespective of species, and is intended to provide a course idea of where we know there can't be 3 or more observations for a species per locality.
+
+##Sampling Maps {.tabset}
+
+###All Observations
+Here's a 1 degree (~100 km x 100 km at equator) grid resolution. 
+```{r}
+#Acquire a base map that's compatible with ggmap (the maps you get from the map() function aren't compatible with ggmap). This is the best resolution I can get to visualize all of South America.
+sa_map <- get_map(location = c(-67.9037, -23.0301), source = "google", zoom = 3, maptype = "satellite")
+
+sa_all_binary_100 <- ggmap(sa_map) + 
+  stat_bin2d(data = bird_data, aes(x = Long, y = Lat), binwidth = c(1, 1)) + 
+  scale_fill_gradientn(lim = c(3,200), colors = "red") + 
+  guides(fill = FALSE)
+
+sa_all_binary_100
+
+```
+
+Here's a 2 degree (~ 220 km x 220 km) grid resolution.
+```{r}
+sa_all_binary_200 <- ggmap(sa_map) + 
+  stat_bin2d(data = bird_data, aes(x = Long, y = Lat), binwidth = c(2, 2)) + 
+  scale_fill_gradientn(lim = c(3,200), colors = "red") + 
+  guides(fill = FALSE)
+
+sa_all_binary_200
+```
+
+
+Here's a 3 degree resolution.
+```{r}
+sa_all_binary_300 <- ggmap(sa_map) + 
+  stat_bin2d(data = bird_data, aes(x = Long, y = Lat), binwidth = c(3, 3)) + 
+  scale_fill_gradientn(lim = c(3,200), colors = "red") + 
+  guides(fill = FALSE)
+
+sa_all_binary_300
+```
+
+
+###>=3 per species
+Here I'm subsetting the data for only those localities where there are more than 3 observations for a species and then plotting. This reduced our data set from 68 species to 38 species and 2825 observations to 1253 observations
+```{r}
+##filtering for localities that have more than 3 observations for each species of bird
+bird_data_3 <- bird_data %>%
+  group_by(.dots = c("Species", "Long", "Lat")) %>% #this groups the species and coordinates so I can filter for species that have more than 2 duplicates of the Longitude and Latitude (i.e. more than 2 observations at each locality)
+  filter(n() > 2)
+
+#ungroup the data set to prevent wonky things from happening later
+ungroup(bird_data_3)
+
+
+##Plot
+#convert locality data to a spatial object. The spatial object is basically a shape file that the mapping function can interpret. 
+coord_points_3 <- st_as_sf(bird_data_3, coords = c("Long", "Lat"), 
+                         crs = 4326, agr = "constant")
+
+#create popup labels for points. This is so we can click on the points for info
+popup_label_3 <- paste(coord_points_3$Genus, coord_points_3$Species, "<br>",
+                     coord_points_3$Country, "<br>",
+                     coord_points_3$Locality, "<br>",
+                     coord_points_3$geometry)
+
+#plot in leafly
+leaflet(data = w_map) %>% 
+  addTiles() %>%
+  addCircleMarkers(data = coord_points_3,
+                  color = ~pal(Country),
+                  radius = 5,
+                  popup = popup_label)
+
+```
+
+
+
+
+As a sanity check, I'm re-plotting the binary map at 1 degree (100 km) resolution with the new data set to make sure there are no localities that have less than three observations. Everything looks good!
+
+```{r}
+sa_all_binary_3_100 <- ggmap(sa_map) + 
+  stat_bin2d(data = bird_data_3, aes(x = Long, y = Lat), binwidth = c(1, 1)) + 
+  scale_fill_gradientn(lim = c(3,200), colors = "red") + 
+  guides(fill = FALSE)
+
+sa_all_binary_3_100
+```
+
+
+
+Now that I've removed localities with less than 3 observations per species, let's check out the observation density per locality at the 100 km, 200 km, and 300 km resolutions. I'm making two plots: One with the full range, and one with all localities with more than 20 observations greyed out so we can see the sampling structure at lower-density localities.
+
+100 km resolution.
+```{r}
+sa_all_heat_100 <- ggmap(sa_map) + 
+  stat_bin2d(data = bird_data_3, aes(x = Long, y = Lat), binwidth = c(1, 1)) + 
+  scale_fill_viridis()
+
+sa_all_heat_100
+
+sa_all_heat_100_20 <- ggmap(sa_map) + 
+  stat_bin2d(data = bird_data_3, aes(x = Long, y = Lat), binwidth = c(1, 1)) + 
+  scale_fill_viridis(limits = c(3, 20))
+
+sa_all_heat_100_20
+```
+
+
+200 km resolution.
+
+```{r}
+sa_all_heat_200 <- ggmap(sa_map) + 
+  stat_bin2d(data = bird_data_3, aes(x = Long, y = Lat), binwidth = c(2, 2)) + 
+  scale_fill_viridis()
+
+sa_all_heat_200
+
+sa_all_heat_200_20 <- ggmap(sa_map) + 
+  stat_bin2d(data = bird_data_3, aes(x = Long, y = Lat), binwidth = c(2, 2)) + 
+  scale_fill_viridis(limits = c(3, 20))
+
+sa_all_heat_200_20
+```
+
+
+300 km resolution.
+
+```{r}
+sa_all_heat_300 <- ggmap(sa_map) + 
+  stat_bin2d(data = bird_data_3, aes(x = Long, y = Lat), binwidth = c(3, 3)) + 
+  scale_fill_viridis()
+
+sa_all_heat_300
+
+sa_all_heat_300_20 <- ggmap(sa_map) + 
+  stat_bin2d(data = bird_data_3, aes(x = Long, y = Lat), binwidth = c(3, 3)) + 
+  scale_fill_viridis(limits = c(3, 20))
+
+sa_all_heat_300_20
+```
+
+###Species density
+Now I'm going to look at species density per cell for the three resolutions! I'm reducing the data set to a single species observation per locality and making a choropleth map from the reduced data set. I'm making two maps per resolution: one with all species and one where cells with greater than 5 observations are greyed so we can differentiate among cells with lower numbers of species
+
+
+100 km. 
+```{r}
+#Filtering the data to only include rows with unique Lat and Long coordinates
+bird_data_unique <- bird_data_3 %>%
+  group_by(.dots = c("Species", "Long", "Lat")) %>%
+  distinct()
+
+
+sa_species_heat_100 <- ggmap(sa_map) + 
+  stat_bin2d(data = bird_data_unique, aes(x = Long, y = Lat), binwidth = c(1, 1))+
+  scale_fill_viridis()
+
+sa_species_heat_100
+
+sa_species_heat_100_5 <- ggmap(sa_map) + 
+  stat_bin2d(data = bird_data_unique, aes(x = Long, y = Lat), binwidth = c(1, 1))+
+  scale_fill_viridis(limits = c(0,5))
+
+sa_species_heat_100_5
+
+
+```
+
+200 km.
+```{r}
+sa_species_heat_200 <- ggmap(sa_map) + 
+  stat_bin2d(data = bird_data_unique, aes(x = Long, y = Lat), binwidth = c(2, 2))+
+  scale_fill_viridis()
+
+sa_species_heat_200
+
+sa_species_heat_200_5 <- ggmap(sa_map) + 
+  stat_bin2d(data = bird_data_unique, aes(x = Long, y = Lat), binwidth = c(2, 2))+
+  scale_fill_viridis(limits = c(0,5))
+
+sa_species_heat_200_5
+
+```
+
+
+300 km.
+```{r}
+sa_species_heat_300 <- ggmap(sa_map) + 
+  stat_bin2d(data = bird_data_unique, aes(x = Long, y = Lat), binwidth = c(3, 3))+
+  scale_fill_viridis()
+
+sa_species_heat_300
+
+sa_species_heat_300_5 <- ggmap(sa_map) + 
+  stat_bin2d(data = bird_data_unique, aes(x = Long, y = Lat), binwidth = c(3, 3))+
+  scale_fill_viridis(limits = c(0,5))
+
+sa_species_heat_300_5
+
+```
+
+
+
+
+
+
+
+
+
