@@ -36,8 +36,14 @@ Now time for the map! This is of all of our South American localities colored ac
 
 ```{r}
 #convert locality data to a spatial object. The spatial object is basically a shape file that the mapping function can interpret. 
+coords <- cbind.data.frame(Long = bird_data$Long, Lat = bird_data$Lat)
 coord_points <- st_as_sf(bird_data, coords = c("Long", "Lat"), 
                          crs = 4326, agr = "constant")
+
+SpatialPointsDataFrame(coords = coords, data = ,
+                               proj4string = CRS("+proj=longlat +datum=WGS84 +ellps=WGS84 +towgs84=0,0,0"))
+
+  
 
 #load a world map as the base map.
 w_map <- map("world", plot = FALSE)
@@ -81,7 +87,7 @@ bounds <- extent(-80, -35, -40, 15) #Reduce extent of raster to our area of inte
 sa_clim_1d <- raster(f) %>% crop(bounds) %>% aggregate(fact = 6) #read in raster, crop it, and downscale the resolution to 1 degree
 
 #get the cell number of each coordinate pair for filtering
-pts_ext_1d <- extract(sa_clim_1d, coord_points, fun = "count", sp = TRUE, cellnumbers = TRUE) %>% 
+pts_ext_1d <- raster::extract(sa_clim_1d, coord_points, fun = "count", sp = TRUE, cellnumbers = TRUE) %>% 
   as.data.frame() %>%
   setnames(old = c("coords.x1", "coords.x2"), new = c("Long", "Lat")) %>% #rename coordinates 
   mutate(cells = as.factor(cells)) %>% #need cells numbers as factors so I can count their frequency
