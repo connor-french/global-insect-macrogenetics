@@ -40,10 +40,6 @@ coords <- cbind.data.frame(Long = bird_data$Long, Lat = bird_data$Lat)
 coord_points <- st_as_sf(bird_data, coords = c("Long", "Lat"), 
                          crs = 4326, agr = "constant")
 
-SpatialPointsDataFrame(coords = coords, data = ,
-                               proj4string = CRS("+proj=longlat +datum=WGS84 +ellps=WGS84 +towgs84=0,0,0"))
-
-  
 
 #load a world map as the base map.
 w_map <- map("world", plot = FALSE)
