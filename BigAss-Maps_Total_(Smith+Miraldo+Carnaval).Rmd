@@ -14,7 +14,7 @@ lapply(packages, require, character.only = TRUE)
 setwd("/Users/Bertola/Documents/Megamitogenomics")
 
 #read in data
-total_data <- read.csv("Miraldoetal_GPS-total.csv")
+total_data <- read.csv("TOTAL_GPS_(Smith+Miraldo+Carnaval).csv")
 ```
 
 
@@ -50,8 +50,8 @@ popup_label <- paste(coord_points$Species_name, "<br>", coord_points$geometry)
 #plot in leafly
 leaflet(data = w_map) %>% 
   addTiles() %>%
-  addCircleMarkers(data = coord_points,
-                  color = ~pal(Species_name),
+  addCircleMarkers(data = coord_points, 
+                  color = ~pal(Species_name), 
                   radius = 5,
                   popup = popup_label)
                   
@@ -63,10 +63,10 @@ leaflet(data = w_map) %>%
 ###>=3 per species
 Here I'm subsetting the data for only those cells where there are more than 3 observations for a species and then plotting.
 
-100x100 km. Dataset is reduced from 2439 to 267 species and from 45933 observations to 11508 observations. (species: length(unique(pts_ext_1d$Species_name)) / observations:str(pts_ext_1d))
+100x100 km. Dataset is reduced from 2595 to 347 species and from 53729 observations to 13986 observations. (species: length(unique(pts_ext_1d$Species_name)) / observations:str(pts_ext_1d))
 ```{r}
 #create a numeric color palette so I can bin the colors (doing this up front so I don't repeatedly assign this variable)
-pal2 <- colorNumeric(palette = "inferno", domain = NULL, na.color = "#00000000")
+pal2 <- colorBin(palette = "inferno", domain =NULL, bins= c(3,5,10,20,50,100,200,500,3600), na.color = "#00000000")
 
 #Reading in an environmental raster (world clim 2.0 bio1 raster) at 10 arc-minute resolution to use as a raster that utilizes lat-long coordinates for its cells. The raster isn't what's important, what is important is the raster resolution. 
 f <- "/Users/Bertola/Documents/Megamitogenomics/wc2.0_bio_10m_01.tif" #raster location
@@ -98,7 +98,7 @@ leaflet(data = sa_clim_1d) %>%
 
 
 
-200x200 km. 2439 to 280 species and from 45933 observations to 11905 observations. (species: length(unique(pts_ext_2d$Species_name)) / observations:str(pts_ext_2d))
+200x200 km. 2595 to 366 species and from 53729 observations to 14887 observations. (species: length(unique(pts_ext_2d$Species_name)) / observations:str(pts_ext_2d))
 
 ```{r}
 sa_clim_2d <- raster(f) %>% crop(bounds) %>% aggregate(fact = 12) #read in raster, crop it, and downscale the resolution to 1 degree
@@ -125,7 +125,7 @@ leaflet(data = sa_clim_2d) %>%
 ```
 
 
-300x300 km. 2439 to 290 species and from 45933 observations to 12078 observations. (species: length(unique(pts_ext_3d$Species_name)) / observations:str(pts_ext_3d))
+300x300 km. 2595 to 381 species and from 53729 observations to 15353 observations. (species: length(unique(pts_ext_3d$Species_name)) / observations:str(pts_ext_3d))
 
 ```{r}
 sa_clim_3d <- raster(f) %>% crop(bounds) %>% aggregate(fact = 18) #read in raster, crop it, and downscale the resolution to 1 degree
@@ -156,6 +156,8 @@ Now I'm going to look at species density per cell for the three resolutions! Jus
 
 100 km. 
 ```{r}
+pal3 <- colorBin(palette = "inferno", domain =NULL, bins= c(1,3,5,10,20,30,40,50,60,80,100), na.color = "#00000000")
+
 pts_ext_1d_sp <- as.data.frame(pts_ext_1d) #convert to data frame for filtering
 pts_ext_1d_sp <- pts_ext_1d_sp[!duplicated(pts_ext_1d_sp[c("Species_name", "cells")]),] #filter for unique species in each cell
 
@@ -167,8 +169,8 @@ count_pts_1d_sp <- rasterize(pts_ext_1d_sp, sa_clim_1d, fun = "count", field = "
 #plot count map
 leaflet(data = sa_clim_1d) %>% 
   addTiles() %>%
-  addRasterImage(count_pts_1d_sp, colors = pal2,  opacity = 0.8) %>%
-  addLegend(pal = pal2, values = values(count_pts_1d_sp))
+  addRasterImage(count_pts_1d_sp, colors = pal3,  opacity = 0.8) %>%
+  addLegend(pal = pal3, values = values(count_pts_1d_sp))
 
 
 ```
@@ -186,8 +188,8 @@ count_pts_2d_sp <- rasterize(pts_ext_2d_sp, sa_clim_2d, fun = "count", field = "
 #plot count map
 leaflet(data = sa_clim_2d) %>% 
   addTiles() %>%
-  addRasterImage(count_pts_2d_sp, colors = pal2,  opacity = 0.8) %>%
-  addLegend(pal = pal2, values = values(count_pts_2d_sp))
+  addRasterImage(count_pts_2d_sp, colors = pal3,  opacity = 0.8) %>%
+  addLegend(pal = pal3, values = values(count_pts_2d_sp))
 ```
 
 
@@ -204,8 +206,8 @@ count_pts_3d_sp <- rasterize(pts_ext_3d_sp, sa_clim_3d, fun = "count", field = "
 #plot count map
 leaflet(data = sa_clim_3d) %>% 
   addTiles() %>%
-  addRasterImage(count_pts_3d_sp, colors = pal2,  opacity = 0.8) %>%
-  addLegend(pal = pal2, values = values(count_pts_3d_sp))
+  addRasterImage(count_pts_3d_sp, colors = pal3,  opacity = 0.8) %>%
+  addLegend(pal = pal3, values = values(count_pts_3d_sp))
 ```
 
 
