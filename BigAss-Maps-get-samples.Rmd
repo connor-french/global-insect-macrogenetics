@@ -227,7 +227,7 @@ library(gdata) #for drop.levels function so I can just drop levels from the whol
 library(stringr) #to manipulate text for the names of the pi values output from my pi calculation function
 seq.files <- list.files("/Users/connorfrench/Dropbox/Old_Mac/School_Stuff/CUNY/BigAss-bird-phylogeography/S1_Data", pattern = ".nex")
 all.seq <- list()
-for (file in 1:length(seq.files)){ #making a master nexus file of all those from the supplemental data.
+for (file in 1:length(seq.files)){
   #print(seq.files[file]) #print when first running on a data sets so you can tell which file is corrupt if an error occurs. Probably more reasonable to add an if/then statement, but whatever
   sp.nex <- read.nexus.data(paste("../S1_Data/", seq.files[file], sep = ""))
   all.seq <- append(all.seq, sp.nex)
@@ -256,7 +256,7 @@ species.seq.split.one <- pts_ext_1d %>%
   split(x, x$Species)}) %>% #split each cell by species
   drop.levels()
 
-#write a nexus file for each species per cell. Filtering all nexus files with less than 3 sequences for now- will update once the missing sequences are accounted for 
+#write a nexus file for each group of sequences from a cell. 
 dir.create("../bird-seqs-one")
 for (i in 1:length(species.seq.split.one)) {
   df <- species.seq.split.one[[i]]
