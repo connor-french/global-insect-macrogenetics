@@ -4,22 +4,14 @@ output: html_notebook
 ---
 Here are some maps exploring our bird data. I have two sets of maps: Maps only with cells where there are at least three individuals per species (>= 3 species tab), and maps that show the species density, rather than observation density (Species density tab). 
 
-<<<<<<< HEAD
 First I'm reading in the packages and reading in the data.
-=======
-First I'm reading in the packages and setting my working directory where the data is, and reading in the data.
->>>>>>> a1e83eb43e0a052de56ea23de0ab0a64188cefee
 ```{r, results='hide'}
 packages <- c("magrittr", "tidyverse", "sf", "leaflet", "maps", "ggmap", "viridis", "raster", "maptools", "data.table")
 lapply(packages, require, character.only = TRUE)
 
 
 #read in data
-<<<<<<< HEAD
 bird_data <- read.csv("datasets/sample_key_68_clean.csv")
-=======
-bird_data <- read.csv("sample_key_68_clean.csv")
->>>>>>> a1e83eb43e0a052de56ea23de0ab0a64188cefee
 ```
 
 
@@ -32,11 +24,7 @@ bird_data <- subset(bird_data, select = c("Sample.Name","Country", "State", "Loc
   subset(Lat < 12.5) %>%
   subset(!(Country %in% c("Mexico", "Cuba", "Bahamas", "Dominican Republic", "Nicaragua", "Costa Rica", "Panama"))) %>% 
   na.omit() %>%
-<<<<<<< HEAD
   drop.levels()
-=======
-  droplevels.data.frame()
->>>>>>> a1e83eb43e0a052de56ea23de0ab0a64188cefee
 
 
 ```
@@ -47,10 +35,6 @@ Now time for the map! This is of all of our South American localities colored ac
 
 ```{r}
 #convert locality data to a spatial object. The spatial object is basically a shape file that the mapping function can interpret. 
-<<<<<<< HEAD
-=======
-coords <- cbind.data.frame(Long = bird_data$Long, Lat = bird_data$Lat)
->>>>>>> a1e83eb43e0a052de56ea23de0ab0a64188cefee
 coord_points <- st_as_sf(bird_data, coords = c("Long", "Lat"), 
                          crs = 4326, agr = "constant")
 
@@ -88,11 +72,7 @@ Here I'm subsetting the data for only those cells where there are more than 3 ob
 100x100 km. Dataset is reduced from 68 to 49 species and from 2825 observations to 1700 observations.
 ```{r}
 #create a numeric color palette so I can bin the colors (doing this up front so I don't repeatedly assign this variable)
-<<<<<<< HEAD
 pal.numseq <- colorBin(palette = "inferno", domain = NULL, bins = c(1,3,5,7,10,20,40,60,80), na.color = "#00000000")
-=======
-pal2 <- colorNumeric(palette = "inferno", domain = NULL, na.color = "#00000000") 
->>>>>>> a1e83eb43e0a052de56ea23de0ab0a64188cefee
 #Reading in an environmental raster (world clim 2.0 bio1 raster) at 10 arc-minute resolution to use as a raster that utilizes lat-long coordinates for its cells. The raster isn't what's important, what is important is the raster resolution. 
 f <- "/Users/connorfrench/Dropbox/Old_Mac/climate-data/wc2.0_10m_bio/wc2.0_bio_10m_01.tif" #raster location
 
@@ -108,11 +88,7 @@ pts_ext_1d <- raster::extract(sa_clim_1d, coord_points, fun = "count", sp = TRUE
   group_by(Species, cells) %>% #group the data set by species, then by cell number
   filter(n() > 2) %>% #retain only observations where there are more than two species observations per cell
   ungroup() %>%
-<<<<<<< HEAD
   drop.levels()
-=======
-  droplevels()
->>>>>>> a1e83eb43e0a052de56ea23de0ab0a64188cefee
 
 coordinates(pts_ext_1d) <- ~Long+Lat #convert to a spatial data frame
 
@@ -122,13 +98,8 @@ count_pts_1d <- rasterize(pts_ext_1d, sa_clim_1d, fun = "count", field = "Specie
 #plot count map
 leaflet(data = sa_clim_1d) %>% 
   addTiles() %>%
-<<<<<<< HEAD
   addRasterImage(count_pts_1d, colors = pal.numseq,  opacity = 0.8) %>%
   addLegend(pal = pal.numseq, values = values(count_pts_1d))
-=======
-  addRasterImage(count_pts_1d, colors = pal2,  opacity = 0.8) %>%
-  addLegend(pal = pal2, values = values(count_pts_1d))
->>>>>>> a1e83eb43e0a052de56ea23de0ab0a64188cefee
 ```
 
 
@@ -152,21 +123,13 @@ coordinates(pts_ext_2d) <- ~Long+Lat #convert to a spatial data frame
 
 count_pts_2d <- rasterize(pts_ext_2d, sa_clim_2d, fun = "count", field = "Species") #make a raster out of the counts of observations per cell
 
-<<<<<<< HEAD
 pal.numseq.two <- colorBin(palette = "inferno", domain = NULL, bins = c(1,3,5,7,10,20,40,60,80,120,160), na.color = "#00000000")
-=======
->>>>>>> a1e83eb43e0a052de56ea23de0ab0a64188cefee
 
 #plot count map
 leaflet(data = sa_clim_2d) %>% 
   addTiles() %>%
-<<<<<<< HEAD
   addRasterImage(count_pts_2d, colors = pal.numseq.two,  opacity = 0.8) %>%
   addLegend(pal = pal.numseq.two, values = values(count_pts_2d))
-=======
-  addRasterImage(count_pts_2d, colors = pal2,  opacity = 0.8) %>%
-  addLegend(pal = pal2, values = values(count_pts_2d))
->>>>>>> a1e83eb43e0a052de56ea23de0ab0a64188cefee
 ```
 
 
@@ -188,7 +151,6 @@ coordinates(pts_ext_3d) <- ~Long+Lat #convert to a spatial data frame
 
 count_pts_3d <- rasterize(pts_ext_3d, sa_clim_3d, fun = "count", field = "Species") #make a raster out of the counts of observations per cell
 
-<<<<<<< HEAD
 pal.numseq.three <- colorBin(palette = "inferno", domain = NULL, bins = c(1,3,5,7,10,20,40,60,80,120,160), na.color = "#00000000")
 
 #plot count map
@@ -196,13 +158,6 @@ leaflet(data = sa_clim_3d) %>%
   addTiles() %>%
   addRasterImage(count_pts_3d, colors = pal.numseq.three,  opacity = 0.8) %>%
   addLegend(pal = pal.numseq.three, values = values(count_pts_3d))
-=======
-#plot count map
-leaflet(data = sa_clim_3d) %>% 
-  addTiles() %>%
-  addRasterImage(count_pts_3d, colors = pal2,  opacity = 0.8) %>%
-  addLegend(pal = pal2, values = values(count_pts_3d))
->>>>>>> a1e83eb43e0a052de56ea23de0ab0a64188cefee
 ```
 
 
@@ -272,15 +227,10 @@ Here's some housekeeping before applying to each spatial filtering level.
 library(ape) #for reading in and writing nexus files
 library(gdata) #for drop.levels function so I can just drop levels from the whole dataframe
 library(stringr) #to manipulate text for the names of the pi values output from my pi calculation function
-<<<<<<< HEAD
 seq.files <- list.files("/Users/connorfrench/Dropbox/Old_Mac/School_Stuff/CUNY/BigAss-bird-phylogeography/S1_Data", pattern = ".nex") #create a list of sequence files
 
 #for loop to read in nexus files
 all.seq <- list() 
-=======
-seq.files <- list.files("/Users/connorfrench/Dropbox/Old_Mac/School_Stuff/CUNY/BigAss-bird-phylogeography/S1_Data", pattern = ".nex")
-all.seq <- list()
->>>>>>> a1e83eb43e0a052de56ea23de0ab0a64188cefee
 for (file in 1:length(seq.files)){
   #print(seq.files[file]) #print when first running on a data sets so you can tell which file is corrupt if an error occurs. Probably more reasonable to add an if/then statement, but whatever
   sp.nex <- read.nexus.data(paste("../S1_Data/", seq.files[file], sep = ""))
@@ -294,7 +244,6 @@ pi.calc.fun <- function(x) {
   dist <- dist.dna(z, model = "raw")
   return(mean(dist))
 }
-<<<<<<< HEAD
 
 #count the number of sequences per species per cell
 num.seq.fun <- function(x) {
@@ -303,8 +252,6 @@ num.seq.fun <- function(x) {
   num <- length(z)
   return(num)
 }
-=======
->>>>>>> a1e83eb43e0a052de56ea23de0ab0a64188cefee
 ```
 
 
@@ -326,19 +273,11 @@ dir.create("../bird-seqs-one")
 for (i in 1:length(species.seq.split.one)) {
   df <- species.seq.split.one[[i]]
   for (j in 1:length(df)){
-<<<<<<< HEAD
     samples <- df[[j]]$Sample.Name#make a vector of sample names from each data set
     seqs <- all.seq[samples] #subset all.seq for the samples
     #seqs2 <- Filter(Negate(is.null), seqs) #remove any null results (i.e. remove if a sample name from the spreadsheet doesn't match with a sample from the nexus)
     if(length(seqs) < 3) next #don't write to a nexus file if there are less than 3 sequences
     write.nexus.data(seqs, file = paste0("../bird-seqs-one/", names(species.seq.split.one)[[i]], ".", names(df)[[j]], ".nex"), interleaved = FALSE) #write to a nexus file, which is named by the cell number
-=======
-    samples <- as.vector(df[[j]]$Sample.Name) #make a vector of sample names from each data set
-    seqs <- all.seq[samples] #subset all.seq for the samples
-    seqs2 <- Filter(Negate(is.null), seqs) #remove any null results (i.e. remove if a sample name from the spreadsheet doesn't match with a sample from the nexus)
-    if(length(seqs2) < 3) next #don't write to a nexus file if there are less than 3 sequences
-    write.nexus.data(seqs2, file = paste0("../bird-seqs-one/", names(species.seq.split.one)[[i]], ".", names(df)[[j]], ".nex"), interleaved = FALSE) #write to a nexus file, which is named by the cell number
->>>>>>> a1e83eb43e0a052de56ea23de0ab0a64188cefee
   }
 }
 
@@ -348,7 +287,6 @@ for (i in 1:length(species.seq.split.one)) {
 files <- paste0("../bird-seqs-one/", list.files("../bird-seqs-one"))
 
 pi.total.one <- files %>% sapply(pi.calc.fun) #calculate pi for all each species within each cell
-<<<<<<< HEAD
 num.seq.one <- files %>% sapply(num.seq.fun)
 
 pi.names.one <- str_match_all(names(pi.total.one), "[0-9]+") %>% unlist() #make a vector of the cell numbers for each pi calculation
@@ -356,37 +294,21 @@ pi.names.one <- str_match_all(names(pi.total.one), "[0-9]+") %>% unlist() #make 
 pi.df.one <- bind_cols(cells = pi.names.one, pi = unname(pi.total.one), numseq = unname(num.seq.one)) #create dataframe of pi calculations
 
 pi.means.one <- pi.df.one %>% group_by(cells) %>% dplyr::summarise(mean.pi = mean(pi), sd.pi = sd(pi), numseq = sum(numseq)) #calculate pi for each cell number. I'm using dplyr::summarise because plyr also has a summarise function that can create a lot of confusion.
-=======
-
-pi.names.one <- str_match_all(names(pi.total.one), "[0-9]+") %>% unlist() #make a vector of the cell numbers for each pi calculation
-
-pi.df.one <- bind_cols(cells = pi.names.one, pi = pi.total.one) #create dataframe of pi calculations
-
-pi.means.one <- pi.df.one %>% group_by(cells) %>% dplyr::summarise(mean.pi = mean(pi), sd.pi = sd(pi)) #calculate pi for each cell number. I'm using dplyr::summarise because plyr also has a summarise function that can create a lot of confusion.
->>>>>>> a1e83eb43e0a052de56ea23de0ab0a64188cefee
 
 pts.ext.one.pi <- merge(pts_ext_1d, pi.means.one, by = "cells") #make new spatial data frame including the pi values
 
 pi.raster.one <- rasterize(pts.ext.one.pi, sa_clim_1d, fun = "first", field = "mean.pi") #create new raster of mean pi values per cell
 
-<<<<<<< HEAD
 
-=======
-pal.one <- colorBin(palette = "inferno", domain =NULL, bins= c(0, .001, .002, .003, .004, .005, .01, .02, .03, .04, .05), na.color = "#00000000") 
->>>>>>> a1e83eb43e0a052de56ea23de0ab0a64188cefee
 leaflet() %>% 
   addTiles() %>%
   addRasterImage(pi.raster.one, colors = pal.one,  opacity = 0.8) %>%
   addLegend(pal = pal.one, values = values(pi.raster.one))
 
-<<<<<<< HEAD
 #plot the mean pi value as a function of the number of sequences to see if the number of sequences influence the calculation of genetic diversity. It appears to.
 plot(pi.means.one$mean.pi ~ pi.means.one$numseq)
 model <- lm(mean.pi ~ numseq, data = pi.means.one)
 abline(model)
-=======
-
->>>>>>> a1e83eb43e0a052de56ea23de0ab0a64188cefee
 ```
 
 
@@ -408,19 +330,11 @@ dir.create("../bird-seqs-two")
 for (i in 1:length(species.seq.split.two)) {
   df <- species.seq.split.two[[i]]
   for (j in 1:length(df)){
-<<<<<<< HEAD
     samples <- df[[j]]$Sample.Name #make a vector of sample names from each data set
     seqs <- all.seq[samples] #subset all.seq for the samples
     #seqs2 <- Filter(Negate(is.null), seqs) #remove any null results (i.e. remove if a sample name from the spreadsheet doesn't match with a sample from the nexus)
     if(length(seqs) < 3) next #don't write to a nexus file if there are less than 3 sequences
     write.nexus.data(seqs, file = paste0("../bird-seqs-two/", names(species.seq.split.two)[[i]], ".", names(df)[[j]], ".nex"), interleaved = FALSE) #write to a nexus file, which is named by the cell number
-=======
-    samples <- as.vector(df[[j]]$Sample.Name) #make a vector of sample names from each data set
-    seqs <- all.seq[samples] #subset all.seq for the samples
-    seqs2 <- Filter(Negate(is.null), seqs) #remove any null results (i.e. remove if a sample name from the spreadsheet doesn't match with a sample from the nexus)
-    if(length(seqs2) < 3) next #don't write to a nexus file if there are less than 3 sequences
-    write.nexus.data(seqs2, file = paste0("../bird-seqs-two/", names(species.seq.split.two)[[i]], ".", names(df)[[j]], ".nex"), interleaved = FALSE) #write to a nexus file, which is named by the cell number
->>>>>>> a1e83eb43e0a052de56ea23de0ab0a64188cefee
   }
 }
 
@@ -430,7 +344,6 @@ for (i in 1:length(species.seq.split.two)) {
 files <- paste0("../bird-seqs-two/", list.files("../bird-seqs-two"))
 
 pi.total.two <- files %>% sapply(pi.calc.fun) #calculate pi for all each species within each cell
-<<<<<<< HEAD
 num.seq.two <- files %>% sapply(num.seq.fun)
 
 pi.names.two <- str_match_all(names(pi.total.two), "[0-9]+") %>% unlist() #make a vector of the cell numbers for each pi calculation
@@ -438,20 +351,11 @@ pi.names.two <- str_match_all(names(pi.total.two), "[0-9]+") %>% unlist() #make 
 pi.df.two <- bind_cols(cells = pi.names.two, pi = unname(pi.total.two), numseq = unname(num.seq.two)) #create dataframe of pi calculations
 
 pi.means.two <- pi.df.two %>% group_by(cells) %>% dplyr::summarise(mean.pi = mean(pi), sd.pi = sd(pi), numseq = sum(numseq)) #calculate pi for each cell number. I'm using dplyr::summarise because plyr also has a summarise function that can create a lot of confusion.
-=======
-
-pi.names.two <- str_match_all(names(pi.total.two), "[0-9]+") %>% unlist() #make a vector of the cell numbers for each pi calculation
-
-pi.df.two <- bind_cols(cells = pi.names.two, pi = pi.total.two) #create dataframe of pi calculations
-
-pi.means.two <- pi.df.two %>% group_by(cells) %>% dplyr::summarise(mean.pi = mean(pi), sd.pi = sd(pi)) #calculate pi for each cell number. I'm using dplyr::summarise because plyr also has a summarise function that can create a lot of confusion.
->>>>>>> a1e83eb43e0a052de56ea23de0ab0a64188cefee
 
 pts.ext.two.pi <- merge(pts_ext_2d, pi.means.two, by = "cells") #make new spatial data frame including the pi values
 
 pi.raster.two <- rasterize(pts.ext.two.pi, sa_clim_2d, fun = "first", field = "mean.pi") #create new raster of mean pi values per cell
 
-<<<<<<< HEAD
 
 leaflet() %>% 
   addTiles() %>%
@@ -461,15 +365,6 @@ leaflet() %>%
 plot(pi.means.two$mean.pi ~ pi.means.two$numseq)
 model <- lm(mean.pi ~ numseq, data = pi.means.two)
 abline(model)
-=======
-pal.two <- colorBin(palette = "inferno", domain =NULL, bins= c(0, .001, .002, .003, .004, .005, .01, .02, .03, .04, .05), na.color = "#00000000") 
-leaflet() %>% 
-  addTiles() %>%
-  addRasterImage(pi.raster.two, colors = pal.two,  opacity = 0.8) %>%
-  addLegend(pal = pal.two, values = values(pi.raster.two))
-
-
->>>>>>> a1e83eb43e0a052de56ea23de0ab0a64188cefee
 ```
 
 
@@ -490,19 +385,11 @@ dir.create("../bird-seqs-three")
 for (i in 1:length(species.seq.split.three)) {
   df <- species.seq.split.three[[i]]
   for (j in 1:length(df)){
-<<<<<<< HEAD
     samples <- df[[j]]$Sample.Name #make a vector of sample names from each data set
     seqs <- all.seq[samples] #subset all.seq for the samples
     #seqs2 <- Filter(Negate(is.null), seqs) #remove any null results (i.e. remove if a sample name from the spreadsheet doesn't match with a sample from the nexus)
     if(length(seqs) < 3) next #don't write to a nexus file if there are less than 3 sequences
     write.nexus.data(seqs, file = paste0("../bird-seqs-three/", names(species.seq.split.three)[[i]], ".", names(df)[[j]], ".nex"), interleaved = FALSE) #write to a nexus file, which is named by the cell number
-=======
-    samples <- as.vector(df[[j]]$Sample.Name) #make a vector of sample names from each data set
-    seqs <- all.seq[samples] #subset all.seq for the samples
-    seqs2 <- Filter(Negate(is.null), seqs) #remove any null results (i.e. remove if a sample name from the spreadsheet doesn't match with a sample from the nexus)
-    if(length(seqs2) < 3) next #don't write to a nexus file if there are less than 3 sequences
-    write.nexus.data(seqs2, file = paste0("../bird-seqs-three/", names(species.seq.split.three)[[i]], ".", names(df)[[j]], ".nex"), interleaved = FALSE) #write to a nexus file, which is named by the cell number
->>>>>>> a1e83eb43e0a052de56ea23de0ab0a64188cefee
   }
 }
 
@@ -512,7 +399,6 @@ for (i in 1:length(species.seq.split.three)) {
 files <- paste0("../bird-seqs-three/", list.files("../bird-seqs-three"))
 
 pi.total.three <- files %>% sapply(pi.calc.fun) #calculate pi for all each species within each cell
-<<<<<<< HEAD
 num.seq.three <- files %>% sapply(num.seq.fun)
 
 pi.names.three <- str_match_all(names(pi.total.three), "[0-9]+") %>% unlist() #make a vector of the cell numbers for each pi calculation
@@ -520,20 +406,11 @@ pi.names.three <- str_match_all(names(pi.total.three), "[0-9]+") %>% unlist() #m
 pi.df.three <- bind_cols(cells = pi.names.three, pi = unname(pi.total.three), numseq = unname(num.seq.three)) #create dataframe of pi calculations
 
 pi.means.three <- pi.df.three %>% group_by(cells) %>% dplyr::summarise(mean.pi = mean(pi), sd.pi = sd(pi), numseq = sum(numseq)) #calculate pi for each cell number. I'm using dplyr::summarise because plyr also has a summarise function that can create a lot of confusion.
-=======
-
-pi.names.three <- str_match_all(names(pi.total.three), "[0-9]+") %>% unlist() #make a vector of the cell numbers for each pi calculation
-
-pi.df.three <- bind_cols(cells = pi.names.three, pi = pi.total.three) #create dataframe of pi calculations
-
-pi.means.three <- pi.df.three %>% group_by(cells) %>% dplyr::summarise(mean.pi = mean(pi), sd.pi = sd(pi)) #calculate pi for each cell number. I'm using dplyr::summarise because plyr also has a summarise function that can create a lot of confusion.
->>>>>>> a1e83eb43e0a052de56ea23de0ab0a64188cefee
 
 pts.ext.three.pi <- merge(pts_ext_3d, pi.means.three, by = "cells") #make new spatial data frame including the pi values
 
 pi.raster.three <- rasterize(pts.ext.three.pi, sa_clim_3d, fun = "first", field = "mean.pi") #create new raster of mean pi values per cell
 
-<<<<<<< HEAD
 
 leaflet() %>% 
   addTiles() %>%
@@ -544,15 +421,6 @@ leaflet() %>%
 plot(pi.means.three$mean.pi ~ pi.means.three$numseq)
 model <- lm(mean.pi ~ numseq, data = pi.means.three)
 abline(model)
-=======
-pal.three <- colorBin(palette = "inferno", domain =NULL, bins= c(0, .001, .002, .003, .004, .005, .01, .02, .03, .04, .05), na.color = "#00000000") 
-leaflet() %>% 
-  addTiles() %>%
-  addRasterImage(pi.raster.three, colors = pal.three,  opacity = 0.8) %>%
-  addLegend(pal = pal.three, values = values(pi.raster.three))
-
-
->>>>>>> a1e83eb43e0a052de56ea23de0ab0a64188cefee
 
 ```
 
@@ -569,19 +437,12 @@ pi.raster.sd.one <- rasterize(pts.ext.one.pi, sa_clim_1d, fun = "first", field =
 leaflet() %>% 
   addTiles() %>%
   addRasterImage(pi.raster.sd.one, colors = pal.one,  opacity = 0.8) %>%
-<<<<<<< HEAD
   addLegend(pal = pal.one, values = values(pi.raster.sd.one))
 
 #plot the mean pi value as a function of the number of sequences to see if the number of sequences influence the calculation of genetic diversity. It appears to.
 plot(pi.means.one$sd.pi ~ pi.means.one$numseq)
 model <- lm(sd.pi ~ numseq, data = pi.means.one)
 abline(model)
-=======
-  addLegend(pal = pal.one, values = values(pi.raster.one))
-
-plot(pts.ext.one.pi$mean.pi, pts.ext.one.pi$sd.pi)
-
->>>>>>> a1e83eb43e0a052de56ea23de0ab0a64188cefee
 ```
 
 
@@ -591,7 +452,6 @@ pi.raster.sd.two <- rasterize(pts.ext.two.pi, sa_clim_2d, fun = "first", field =
 
 leaflet() %>% 
   addTiles() %>%
-<<<<<<< HEAD
   addRasterImage(pi.raster.sd.two, colors = pal.one,  opacity = 0.8) %>%
   addLegend(pal = pal.one, values = values(pi.raster.sd.two))
 
@@ -599,12 +459,6 @@ leaflet() %>%
 plot(pi.means.two$sd.pi ~ pi.means.two$numseq)
 model <- lm(sd.pi ~ numseq, data = pi.means.two)
 abline(model)
-=======
-  addRasterImage(pi.raster.sd.two, colors = pal.two,  opacity = 0.8) %>%
-  addLegend(pal = pal.two, values = values(pi.raster.sd.two))
-
-plot(pts.ext.two.pi$mean.pi, pts.ext.two.pi$sd.pi)
->>>>>>> a1e83eb43e0a052de56ea23de0ab0a64188cefee
 ```
 
 300x300 km
@@ -613,7 +467,6 @@ pi.raster.sd.three <- rasterize(pts.ext.three.pi, sa_clim_3d, fun = "first", fie
 
 leaflet() %>% 
   addTiles() %>%
-<<<<<<< HEAD
   addRasterImage(pi.raster.sd.three, colors = pal.one,  opacity = 0.8) %>%
   addLegend(pal = pal.one, values = values(pi.raster.sd.three))
 
@@ -667,18 +520,9 @@ leaflet() %>%
 ```
 
 ###Accession Filter
-=======
-  addRasterImage(pi.raster.sd.three, colors = pal.three,  opacity = 0.8) %>%
-  addLegend(pal = pal.three, values = values(pi.raster.sd.three))
-
-plot(pts.ext.three.pi$mean.pi, pts.ext.three.pi$sd.pi)
+I'm going to find and remove duplicate individuals from the datasets
+```{r}
+miraldo.data <- read.csv("")
 ```
 
-
-
-
-
-
-
->>>>>>> a1e83eb43e0a052de56ea23de0ab0a64188cefee
 

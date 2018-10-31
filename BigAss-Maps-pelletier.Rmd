@@ -425,9 +425,6 @@ leaflet() %>%
   addTiles() %>%
   addRasterImage(pi.raster.three, colors = pal.three,  opacity = 0.8) %>%
   addLegend(pal = pal.three, values = values(pi.raster.three))
-
-
-
 ```
 
 
