@@ -519,10 +519,6 @@ leaflet() %>%
 
 ```
 
-###Accession Filter
-I'm going to find and remove duplicate individuals from the datasets
-```{r}
-miraldo.data <- read.csv("")
-```
+
 
 

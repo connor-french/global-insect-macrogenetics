@@ -11,7 +11,7 @@ lapply(packages, require, character.only = TRUE)
 
 
 #read in data. Had to remove a few bacteria(?) localities from the original csv. investigate later
-pelletier.data <- fread("datasets/pelletier-localities.csv")
+pelletier.data <- fread("../pelletier-localities.csv")
 ```
 
 
@@ -472,9 +472,16 @@ plot(pts.ext.three.pi$mean.pi, pts.ext.three.pi$sd.pi)
 ```
 
 
-
-
-
+###Accession Filter
+I'm going to find and remove duplicate individuals from the datasets. Combined data set has 59948 observations. Removed 9681 individuals with the same accession number between datasets and remove 569 individuals without accession numbers
+```{r}
+miraldo.data <- read.csv("datasets/Miraldoetal_GPS-total.csv")
+names(miraldo.data)[5] = "accession"
+pelletier.no.miraldo <- subset(pelletier.vert, !pelletier.vert$accession %in% miraldo.data$accession)
+pelletier.miraldo <- bind_rows(pelletier.vert, miraldo.data) %>%
+  subset(!duplicated(accession))
+head(pelletier.miraldo)
+```
 
 
 
