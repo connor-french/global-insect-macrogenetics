@@ -475,12 +475,32 @@ plot(pts.ext.three.pi$mean.pi, pts.ext.three.pi$sd.pi)
 ###Accession Filter
 I'm going to find and remove duplicate individuals from the datasets. Combined data set has 59948 observations. Removed 9681 individuals with the same accession number between datasets and remove 569 individuals without accession numbers
 ```{r}
-miraldo.data <- read.csv("datasets/Miraldoetal_GPS-total.csv")
-names(miraldo.data)[5] = "accession"
-pelletier.no.miraldo <- subset(pelletier.vert, !pelletier.vert$accession %in% miraldo.data$accession)
+miraldo.data <- read.csv("datasets/Miraldoetal_GPS-total.csv") %>%
+  
+  
+  #I edited this spreadsheet to separate genus from species. This makes it different from the other Miraldo spreadsheets in case anyone is confused
+names(miraldo.data)[6] = "accession"
+names(miraldo.data)[3] = "latitude"
+names(miraldo.data)[4] = "longitude"
 pelletier.miraldo <- bind_rows(pelletier.vert, miraldo.data) %>%
   subset(!duplicated(accession))
-head(pelletier.miraldo)
+
+coord.points.all <- st_as_sf(pelletier.miraldo, coords = c("longitude", "latitude"), 
+                         crs = 4326, agr = "constant")
+
+#create popup labels for points
+#popup_label <- paste(coord_points$genus, coord_points$Species, "<br>",
+#                     coord_points$Country, "<br>",
+#                     coord_points$Locality, "<br>",
+#                     coord_points$geometry)
+
+#plot in leafly
+leaflet() %>% 
+  addTiles() %>%
+  addCircleMarkers(data = coord.points.all,
+                  #color = ~pal(Country),
+                  radius = 5)
+
 ```
 
 
