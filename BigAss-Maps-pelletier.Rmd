@@ -473,19 +473,32 @@ plot(pts.ext.three.pi$mean.pi, pts.ext.three.pi$sd.pi)
 
 
 ###Accession Filter
-I'm going to find and remove duplicate individuals from the datasets. Combined data set has 59948 observations. Removed 9681 individuals with the same accession number between datasets and remove 569 individuals without accession numbers
+I'm combining the miraldo, bat (Andrea), and pelletier data sets. 
+
+Some notes: the bat data set has full sequences(?) as the accession number for a few of the individuals- why? 
+The bat data only adds around 400 individuals
 ```{r}
 miraldo.data <- read.csv("datasets/Miraldoetal_GPS-total.csv") %>%
-  
-  
-  #I edited this spreadsheet to separate genus from species. This makes it different from the other Miraldo spreadsheets in case anyone is confused
-names(miraldo.data)[6] = "accession"
-names(miraldo.data)[3] = "latitude"
-names(miraldo.data)[4] = "longitude"
-pelletier.miraldo <- bind_rows(pelletier.vert, miraldo.data) %>%
-  subset(!duplicated(accession))
+  rename(accession = Accession_number, latitude = Latitude, longitude = Longitude) %>%
+  separate(Species_name, c("genus", "species"), sep = "_")
 
-coord.points.all <- st_as_sf(pelletier.miraldo, coords = c("longitude", "latitude"), 
+
+
+bat.data <- read.xls("datasets/BATS_SA.xlsx", na.strings = c("", "NA")) %>% #OF NOTE. For our 11-2-18 meeting, I'm removing the CytB column and blank genbank rows to get a quick and dirty idea of what we have. I need to come back and do some more informed filtering. 
+  dplyr::select(-c("BOLD.CODE", "GENBANK.CYTB")) %>%
+  rename(latitude = decimalLatitude, longitude = decimalLongitude, accession = GENBANK.) %>%
+  separate(scientificName, c("genus", "species"), extra = "merge", fill = "right") #this splits the scientific name by the first space (the function figures out the delimiter, but you can specify it yourself) and fills in the trailing characters in the second column. Good for species with two names (like subspecies)
+
+
+
+all.data <- bind_rows(pelletier.vert, miraldo.data, bat.data) %>% #combine all the datasets, removing duplicates
+  subset(!duplicated(accession)) %>%
+  subset(latitude < 12.5) %>%
+  subset(latitude > -42) %>%
+  subset(longitude < -30) %>%
+  subset(longitude > -82) 
+
+coord.points.all <- st_as_sf(all.data, coords = c("longitude", "latitude"), 
                          crs = 4326, agr = "constant")
 
 #create popup labels for points
@@ -502,6 +515,61 @@ leaflet() %>%
                   radius = 5)
 
 ```
+
+
+
+100x100 km observation count map
+```{r}
+#get the cell number of each coordinate pair for filtering. 19459.
+pts.ext.1d.all <- raster::extract(sa_clim_1d, coord.points.all, fun = "count", sp = TRUE, cellnumbers = TRUE) %>% 
+  as.data.frame() %>%
+  setnames(old = c("coords.x1", "coords.x2"), new = c("Long", "Lat")) %>% #rename coordinates 
+  mutate(cells = as.factor(cells)) %>% #need cells numbers as factors so I can count their frequency
+  group_by(species, cells) %>% #group the data set by species, then by cell number
+  filter(n() > 2) %>% #retain only observations where there are more than two species observations per cell
+  ungroup() %>%
+  droplevels()
+
+coordinates(pts.ext.1d.all) <- ~Long+Lat #convert to a spatial data frame
+
+count_pts_1d <- rasterize(pts.ext.1d.all, sa_clim_1d, fun = "count", field = "species") #make a raster out of the counts of observations per cell
+
+pal.vert <- colorBin(palette = "inferno", bins = c(0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100,300,500,1000,1500,2000), domain = NULL, pretty = TRUE, na.color = "#00000000")
+
+
+#plot count map
+leaflet() %>% 
+  addTiles() %>%
+  addRasterImage(count_pts_1d, colors = pal.vert,  opacity = 0.8) %>%
+  addLegend(pal = pal.vert, values = values(count_pts_1d))
+```
+
+100 x 100 km species count map
+
+```{r}
+pts.ext.1d.sp.all <- as.data.frame(pts_ext_1d) #convert to data frame for filtering
+pts.ext.1d.sp.all <- pts.ext.1d.sp.all[!duplicated(pts.ext.1d.sp.all[c("species", "cells")]),] #filter for unique species in each cell
+
+coordinates(pts.ext.1d.sp.all) <- ~Long+Lat #convert to a spatial data frame
+
+count.pts.1d.sp.all <- rasterize(pts.ext.1d.sp.all, sa_clim_1d, fun = "count", field = "species") #make a raster out of the counts of observations per cell
+
+pal.species <- colorBin(palette = "inferno", bins = c(3, 4, 5, 6, 7, 8, 9, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100), domain = NULL, pretty = TRUE, na.color = "#00000000")
+#plot count map
+leaflet() %>% 
+  addTiles() %>%
+  addRasterImage(count.pts.1d.sp.all, colors = pal.species,  opacity = 0.8) %>%
+  addLegend(pal = pal.species, values = values(count.pts.1d.sp.all))
+```
+
+
+
+
+
+
+
+
+
 
 
 
