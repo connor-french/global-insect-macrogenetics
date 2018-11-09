@@ -564,10 +564,40 @@ leaflet() %>%
 
 
 
+```{r}
+pts.ext.2d.sp.all <- as.data.frame(pts_ext_2d) #convert to data frame for filtering
+pts.ext.2d.sp.all <- pts.ext.2d.sp.all[!duplicated(pts.ext.2d.sp.all[c("species", "cells")]),] #filter for unique species in each cell
+
+coordinates(pts.ext.2d.sp.all) <- ~Long+Lat #convert to a spatial data frame
+
+count.pts.2d.sp.all <- rasterize(pts.ext.2d.sp.all, sa_clim_2d, fun = "count", field = "species") #make a raster out of the counts of observations per cell
+
+pal.species <- colorBin(palette = "inferno", bins = c(3, 4, 5, 6, 7, 8, 9, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100), domain = NULL, pretty = TRUE, na.color = "#00000000")
+#plot count map
+leaflet() %>% 
+  addTiles() %>%
+  addRasterImage(count.pts.2d.sp.all, colors = pal.species,  opacity = 0.8) %>%
+  addLegend(pal = pal.species, values = values(count.pts.2d.sp.all))
+```
 
 
 
 
+```{r}
+pts.ext.3d.sp.all <- as.data.frame(pts_ext_3d) #convert to data frame for filtering
+pts.ext.3d.sp.all <- pts.ext.3d.sp.all[!duplicated(pts.ext.3d.sp.all[c("species", "cells")]),] #filter for unique species in each cell
+
+coordinates(pts.ext.3d.sp.all) <- ~Long+Lat #convert to a spatial data frame
+
+count.pts.3d.sp.all <- rasterize(pts.ext.3d.sp.all, sa_clim_3d, fun = "count", field = "species") #make a raster out of the counts of observations per cell
+
+pal.species <- colorBin(palette = "inferno", bins = c(3, 4, 5, 6, 7, 8, 9, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100), domain = NULL, pretty = TRUE, na.color = "#00000000")
+#plot count map
+leaflet() %>% 
+  addTiles() %>%
+  addRasterImage(count.pts.3d.sp.all, colors = pal.species,  opacity = 0.8) %>%
+  addLegend(pal = pal.species, values = values(count.pts.3d.sp.all))
+```
 
 
 
