@@ -36,10 +36,6 @@ pelletier.data <- pelletier.data[,!c("taxonomy", "V10")] #removing the taxonomy 
 ```
 
 
-
-
-
-
 I'm removing all localities not in South America and restricting observations to only vertebrates (since there weren't any marine vertebrates in the data set, we don't have to worry about those)
 
 ```{r}
@@ -478,25 +474,42 @@ I'm combining the miraldo, bat (Andrea), and pelletier data sets.
 Some notes: the bat data set has full sequences(?) as the accession number for a few of the individuals- why? 
 The bat data only adds around 400 individuals
 ```{r}
+#Miraldo et al. data
 miraldo.data <- read.csv("datasets/Miraldoetal_GPS-total.csv") %>%
   rename(accession = Accession_number, latitude = Latitude, longitude = Longitude) %>%
   separate(Species_name, c("genus", "species"), sep = "_")
 
 
-
+#Andrea's bat data
 bat.data <- read.xls("datasets/BATS_SA.xlsx", na.strings = c("", "NA")) %>% #OF NOTE. For our 11-2-18 meeting, I'm removing the CytB column and blank genbank rows to get a quick and dirty idea of what we have. I need to come back and do some more informed filtering. 
   dplyr::select(-c("BOLD.CODE", "GENBANK.CYTB")) %>%
   rename(latitude = decimalLatitude, longitude = decimalLongitude, accession = GENBANK.) %>%
   separate(scientificName, c("genus", "species"), extra = "merge", fill = "right") #this splits the scientific name by the first space (the function figures out the delimiter, but you can specify it yourself) and fills in the trailing characters in the second column. Good for species with two names (like subspecies)
 
 
+#Smith et al. bird data
+#read in data
+bird.data <- read.csv("datasets/sample_key_68_clean.csv") %>%
+  subset(select = c("Sample.Name","Country", "State", "Locality", "Genus", "Species", "Ingroup", "Lat", "Long")) %>%
+  subset(Ingroup == "y") %>%
+  subset(Lat < 12.5) %>%
+  rename(latitude = Lat, longitude = Long, genus = Genus, species = Species) %>%
+  subset(!(Country %in% c("Mexico", "Cuba", "Bahamas", "Dominican Republic", "Nicaragua", "Costa Rica", "Panama"))) %>% 
+  na.omit() %>%
+  drop.levels()
 
-all.data <- bind_rows(pelletier.vert, miraldo.data, bat.data) %>% #combine all the datasets, removing duplicates
+
+
+
+all.data <- bind_rows(pelletier.vert, miraldo.data, bat.data) %>% #combine all the datasets excluding the bird data (no accessions yet), removing duplicates
   subset(!duplicated(accession)) %>%
   subset(latitude < 12.5) %>%
   subset(latitude > -42) %>%
   subset(longitude < -30) %>%
   subset(longitude > -82) 
+
+#add bird data (will add to original pipeline after acquiring accession numbers)
+all.data <- bind_rows(all.data, bird.data)
 
 coord.points.all <- st_as_sf(all.data, coords = c("longitude", "latitude"), 
                          crs = 4326, agr = "constant")
@@ -554,7 +567,7 @@ coordinates(pts.ext.1d.sp.all) <- ~Long+Lat #convert to a spatial data frame
 
 count.pts.1d.sp.all <- rasterize(pts.ext.1d.sp.all, sa_clim_1d, fun = "count", field = "species") #make a raster out of the counts of observations per cell
 
-pal.species <- colorBin(palette = "inferno", bins = c(3, 4, 5, 6, 7, 8, 9, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100), domain = NULL, pretty = TRUE, na.color = "#00000000")
+pal.species <- colorBin(palette = "inferno", bins = c(1,2,3, 4, 5, 6, 7, 8, 9, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100), domain = NULL, pretty = TRUE, na.color = "#00000000")
 #plot count map
 leaflet() %>% 
   addTiles() %>%
