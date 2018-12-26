@@ -11,7 +11,7 @@ lapply(packages, require, character.only = TRUE)
 
 
 #read in data
-bird_data <- read.csv("sample_key_68_clean.csv")
+bird_data <- read.csv("datasets/sample_key_68_clean.csv")
 ```
 
 
@@ -240,6 +240,28 @@ pi.calc.fun <- function(x) {
   dist <- dist.dna(z, model = "raw")
   return(mean(dist))
 }
+
+## Get one hill number from a list of genetic distances. Original python code written by Isaac Overcast
+hill.calc <- function(abunds, order) { 
+  if (order == 0) {
+    return(length(abunds[abunds > 0]))
+  }
+  if (order == 1) {
+    h1 = exp(entropy::entropy(abunds))
+    return(h1)
+  }
+  else {
+    tot = sum(abunds)
+    proportions = abunds[abunds > 0]/tot
+    prop_order = proportions**order
+    h2 = sum(prop_order)**(1/(1-order))
+    return(h2)
+  }
+}
+
+abunds <- c(.05,.02,.01,.04, 1.5, 3.6)
+hill.calc(abunds, 1)
+
 ```
 
 
@@ -280,19 +302,20 @@ pi.names.one <- str_match_all(names(pi.total.one), "[0-9]+") %>% unlist() #make 
 
 pi.df.one <- bind_cols(cells = pi.names.one, pi = pi.total.one) #create dataframe of pi calculations
 
-pi.means.one <- pi.df.one %>% group_by(cells) %>% dplyr::summarise(mean.pi = mean(pi), sd.pi = sd(pi)) #calculate pi for each cell number. I'm using dplyr::summarise because plyr also has a summarise function that can create a lot of confusion.
+pi.means.one <- pi.df.one %>% group_by(cells) %>% dplyr::summarise(mean.pi = mean(pi), sd.pi = sd(pi), hill.pi = hill.calc(pi, 2)) #calculate pi for each cell number. I'm using dplyr::summarise because plyr also has a summarise function that can create a lot of confusion.
 
 pts.ext.one.pi <- merge(pts_ext_1d, pi.means.one, by = "cells") #make new spatial data frame including the pi values
 
-pi.raster.one <- rasterize(pts.ext.one.pi, sa_clim_1d, fun = "first", field = "mean.pi") #create new raster of mean pi values per cell
+pi.raster.one <- rasterize(pts.ext.one.pi, sa_clim_1d, fun = "first", field = "hill.pi") #create new raster of mean pi values per cell
 
 pal.one <- colorBin(palette = "inferno", domain =NULL, bins= c(0, .001, .002, .003, .004, .005, .01, .02, .03, .04, .05), na.color = "#00000000") 
+pal.hill <- colorBin(palette = "inferno", domain =NULL, bins= c(1, 2, 3, 4, 5, 6, 7, 8, 9, 10), na.color = "#00000000")
 leaflet() %>% 
   addTiles() %>%
-  addRasterImage(pi.raster.one, colors = pal.one,  opacity = 0.8) %>%
-  addLegend(pal = pal.one, values = values(pi.raster.one))
+  addRasterImage(pi.raster.one, colors = pal.hill,  opacity = 0.8) %>%
+  addLegend(pal = pal.hill, values = values(pi.raster.one))
 
-
+plot(pts.ext.one.pi$hill.pi ~ pts.ext.one.pi$wc2.0_bio_10m_01)
 ```
 
 

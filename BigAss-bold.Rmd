@@ -1,0 +1,127 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+
+Load packages, read in data, and filter for NAs
+```{r}
+library(data.table)
+library(tidyverse)
+library(leaflet)
+library(sf)
+library(raster)
+library(ape)
+library(gdata)
+
+bold.data <- fread("/Users/connorfrench/Dropbox/Old_Mac/School_Stuff/CUNY/BigAss-bird-phylogeography/bold_data_total.txt", na.strings = c("","NA"))
+bold.data <- bold.data[!is.na(bold.data$lat),]
+bold.data <- bold.data[!is.na(bold.data$lon),]
+bold.data <- bold.data[!is.na(bold.data$species_name),]
+
+#convert to sf object for plotting
+coord_points <- st_as_sf(bold.data, coords = c("lon", "lat"), 
+                         crs = 4326, agr = "constant")
+```
+
+
+Make a raster of the number of individuals per cell we've obtained after filtering for at least three individuals per species per cell and plot. The outlier individuals get filtered out at the next filtering step.
+```{r}
+
+#Reading in an environmental raster (world clim 2.0 bio1 raster) at 10 arc-minute resolution to use as a raster that utilizes lat-long coordinates for its cells. The raster isn't what's important, what is important is the raster resolution. 
+f <- "/Users/connorfrench/Dropbox/Old_Mac/climate-data/wc2.0_10m_bio/wc2.0_bio_10m_01.tif" #raster location
+
+#bounds <- extent(-80, -35, -40, 15) #Reduce extent of raster to our area of interest- South America
+
+sa_clim_1d <- raster(f) %>% 
+  #crop(bounds) %>% 
+  aggregate(fact = 6) #read in raster, crop it, and downscale the resolution to 1 degree
+
+#get the cell number of each coordinate pair for filtering. 19459.
+pts_ext_1d <- raster::extract(sa_clim_1d, coord_points, fun = "count", sp = TRUE, cellnumbers = TRUE) %>% 
+  as.data.frame() %>%
+  setnames(old = c("coords.x1", "coords.x2"), new = c("Long", "Lat")) %>% #rename coordinates 
+  mutate(cells = as.factor(cells)) %>% #need cells numbers as factors so I can count their frequency
+  group_by(species_name, cells) %>% #group the data set by species, then by cell number
+  filter(n() > 2) %>% #retain only observations where there are more than two species observations per cell
+  ungroup() %>%
+  droplevels()
+
+coordinates(pts_ext_1d) <- ~Long+Lat #convert to a spatial data frame
+
+count_pts_1d <- rasterize(pts_ext_1d, sa_clim_1d, fun = "count", field = "species_name") #make a raster out of the counts of observations per cell
+
+pal.vert <- colorBin(palette = "inferno", bins = c(0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100,300,500,1000,1500,2000), domain = NULL, pretty = TRUE, na.color = "#00000000")
+
+
+#plot count map
+leaflet(data = sa_clim_1d) %>% 
+  addTiles() %>%
+  addRasterImage(count_pts_1d, colors = pal.vert,  opacity = 0.8) %>%
+  addLegend(pal = pal.vert, values = values(count_pts_1d))
+```
+
+Plot of the number of species per cell after filtering for cells that contain ten or more species
+```{r}
+pts_ext_1d_sp <- as.data.frame(pts_ext_1d) %>% #convert to data frame for filtering
+  group_by(cells) %>%
+  filter(n_distinct(species_name) > 9) %>%
+  ungroup()
+
+
+coordinates(pts_ext_1d_sp) <- ~Long+Lat #convert to a spatial data frame
+
+count_pts_1d_sp <- rasterize(pts_ext_1d_sp, sa_clim_1d, fun = function(x, ...) {length(unique(x))}, field = "species_name") #make a raster out of the counts of species per cell
+
+pal.species <- colorBin(palette = "inferno", bins = c(0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100,200,300,500, 1000, 2000), domain = NULL, pretty = TRUE, na.color = "#00000000")
+
+#plot count map
+leaflet(data = sa_clim_1d) %>% 
+  addTiles() %>%
+  addRasterImage(count_pts_1d_sp, colors = pal.species,  opacity = 0.8) %>%
+  addLegend(pal = pal.species, values = values(count_pts_1d_sp))
+```
+
+
+
+
+
+
+
+count_pts_1_ph <- rasterize(pts_ext_1d_sp, sa_clim_1d, fun = function(x, ...) {length(unique(x))}, field = "phylum_name") #make a raster out of the counts of species per cell
+pal.phylum <- colorBin(palette = "inferno", bins = c(1,2,3,4,5,6,7,8,9,10), domain = NULL, pretty = TRUE, na.color = "#00000000")
+
+
+#plot phylum map
+leaflet(data = sa_clim_1d) %>% 
+  addTiles() %>%
+  addRasterImage(count_pts_1_ph, colors = pal.phylum,  opacity = 0.8) %>%
+  addLegend(pal = pal.phylum, values = values(count_pts_1_ph))
+
+#####split 
+test.nuc <- subset(pts_ext_1d, select = c(recordID, species_name, cells, nucleotides)) %>% as.data.frame() 
+
+
+#split data frame by cell number and species
+species.seq.split.one <- test.nuc %>%
+  as.data.frame() %>% #some functions don't like spatial data frames
+  drop.levels() %>%
+  split(.$cells) %>% #split into a list of data frames, grouped by cell. Splitting by both cells and species at once doesn't work.
+  lapply(drop.levels) %>% #drop any levels in the data frame. Have to perform first because extra factor levels can mess up the split function
+  lapply(function(x){
+    split(x, x$species_name)}) %>% #split each cell by species
+  drop.levels()
+
+
+#write nexus files
+setwd("/Users/connorfrench/Dropbox/Old_Mac/School_Stuff/CUNY/BigAss-bird-phylogeography/")
+dir.create("bold-seqs")
+for (i in 1:length(species.seq.split.one)) {
+  df <- species.seq.split.one[[i]]
+  for (j in 1:length(df)) {
+    nuc.df <- as.data.frame(df[[j]]) #loop through each species per cell
+    nuc.vec <- nuc.df[,4] #nucleotide column
+    names(nuc.vec) <- nuc.df[,1] #names are the recordIDs
+    write.nexus.data(nuc.vec, file = paste0("bold-seqs/", unique(nuc.df[,2]), ".", unique(nuc.df[,3]), ".nex"), interleaved = FALSE) #write to a nexus file, which is named by the species and cell number
+  }
+}
