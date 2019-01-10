@@ -1,5 +1,5 @@
 ---
-title: "R Notebook"
+title: "BigAss BOLD"
 output: html_notebook
 ---
 
@@ -14,10 +14,11 @@ library(raster)
 library(ape)
 library(gdata)
 
-bold.data <- fread("/Users/connorfrench/Dropbox/Old_Mac/School_Stuff/CUNY/BigAss-bird-phylogeography/bold_data_total.txt", na.strings = c("","NA"))
+bold.data <- fread("../bold_data_total.txt", na.strings = c("","NA"))
 bold.data <- bold.data[!is.na(bold.data$lat),]
 bold.data <- bold.data[!is.na(bold.data$lon),]
 bold.data <- bold.data[!is.na(bold.data$species_name),]
+
 
 #convert to sf object for plotting
 coord_points <- st_as_sf(bold.data, coords = c("lon", "lat"), 
@@ -37,7 +38,7 @@ sa_clim_1d <- raster(f) %>%
   #crop(bounds) %>% 
   aggregate(fact = 6) #read in raster, crop it, and downscale the resolution to 1 degree
 
-#get the cell number of each coordinate pair for filtering. 19459.
+#get the cell number of each coordinate pair for filtering.
 pts_ext_1d <- raster::extract(sa_clim_1d, coord_points, fun = "count", sp = TRUE, cellnumbers = TRUE) %>% 
   as.data.frame() %>%
   setnames(old = c("coords.x1", "coords.x2"), new = c("Long", "Lat")) %>% #rename coordinates 
@@ -83,11 +84,8 @@ leaflet(data = sa_clim_1d) %>%
 ```
 
 
-
-
-
-
-
+Count the number of phyla per cell to characterize the higher-order taxonomic diversity per cell. This could influence calculations of genetic diversity. 
+```{r}
 count_pts_1_ph <- rasterize(pts_ext_1d_sp, sa_clim_1d, fun = function(x, ...) {length(unique(x))}, field = "phylum_name") #make a raster out of the counts of species per cell
 pal.phylum <- colorBin(palette = "inferno", bins = c(1,2,3,4,5,6,7,8,9,10), domain = NULL, pretty = TRUE, na.color = "#00000000")
 
@@ -97,9 +95,36 @@ leaflet(data = sa_clim_1d) %>%
   addTiles() %>%
   addRasterImage(count_pts_1_ph, colors = pal.phylum,  opacity = 0.8) %>%
   addLegend(pal = pal.phylum, values = values(count_pts_1_ph))
+```
 
+
+Write the sequence data in the BOLD csv to nexus files. Writing all species with greater than 3 individuals per file to a nexus file. I will filter for cells with different numbers of species per cell later. Each nexus file is labeled as "speciesname.cell.nex".
+```{r}
 #####split 
-test.nuc <- subset(pts_ext_1d, select = c(recordID, species_name, cells, nucleotides)) %>% as.data.frame() 
+test.nuc <- subset(pts_ext_1d, select = c(recordID, species_name, cells, marker_codes, nucleotides)) %>% 
+  as.data.frame() %>%
+  distinct(recordID, .keep_all = TRUE) %>% #only retain unique individuals
+  na.omit() %>%
+  group_by(species_name, cells) %>% #group the data set by species, then by cell number
+  filter(str_detect(marker_codes, "COI"), !str_detect(marker_codes, "COII")) %>% #Filter for only COI sequences
+  filter(n() > 9) %>% #retain only observations where there are more than two species observations per cell
+  drop.levels()
+
+
+#####Code for padding short sequences with gaps
+#function to pad the ends of shorter sequences with "N"s so all sequences are the same length for alignments
+gap.fix.fun <- function(nuc) {
+  nuc <- nuc[order(sapply(nuc, length), decreasing = TRUE)] #order sequences in descending order by length. This removes the necessity to do a bunch of unnecessary pairwise comparisons among sequences. Hashing this out because I'm ordering the data frame by sequence length before I apply this function. 
+  nuc.out <- vector("list", length(nuc)) #establish an empty vector to fill
+  nuc.out[[1]] <- nuc[[1]] #replace the first sequence in the out vector
+  names(nuc.out) <- names(nuc) #keep the names of the input vector
+  for (i in seq(2, length(nuc)))
+    if(length(nuc[[i]]) <= length(nuc[[1]])) #if the sequence is shorter than the longest sequence, append the missing data designator "N" to the end of the sequence
+      nuc.out[[i]] <- append(nuc[[i]], rep(c("N"), length(nuc[[1]]) - length(nuc[[i]])))
+  return(nuc.out)
+  }
+
+
 
 
 #split data frame by cell number and species
@@ -112,16 +137,116 @@ species.seq.split.one <- test.nuc %>%
     split(x, x$species_name)}) %>% #split each cell by species
   drop.levels()
 
-
-#write nexus files
-setwd("/Users/connorfrench/Dropbox/Old_Mac/School_Stuff/CUNY/BigAss-bird-phylogeography/")
-dir.create("bold-seqs")
-for (i in 1:length(species.seq.split.one)) {
-  df <- species.seq.split.one[[i]]
-  for (j in 1:length(df)) {
-    nuc.df <- as.data.frame(df[[j]]) #loop through each species per cell
-    nuc.vec <- nuc.df[,4] #nucleotide column
-    names(nuc.vec) <- nuc.df[,1] #names are the recordIDs
-    write.nexus.data(nuc.vec, file = paste0("bold-seqs/", unique(nuc.df[,2]), ".", unique(nuc.df[,3]), ".nex"), interleaved = FALSE) #write to a nexus file, which is named by the species and cell number
+#create directory to put nexus files
+dir.create("../bold-seqs")
+#function to write nexus files
+nexus.write.fun <- function(x) {
+  for (i in seq_along(x)) {
+    df <- x[[i]]
+    for (j in seq_along(df)) {
+      nuc.df <- as.data.frame(df[[j]]) #loop through each species per cell
+      #nuc.df <- nuc.df[order(sapply(nuc.df[,5], length), decreasing = TRUE),] #order df by nucleotide length (need to do this for padding short sequences with "N"s)
+      nuc.vec <- strsplit(nuc.df[,5], "") #nucleotide column. Need to split nucleotides into individual characters.
+      names(nuc.vec) <- paste(nuc.df[,1]) #names are the recordIDs
+      nuc.pad <- gap.fix.fun(nuc.vec) #pad nucleotides with "N"s
+      write.nexus.data(nuc.pad, file = paste0("../bold-seqs/", str_replace(unique(nuc.df[,2]), " ", "-"), ".", unique(nuc.df[,3]), ".nex"), missing = "N", interleaved = FALSE) #write to a nexus file, which is named by the species and cell number
+    }
   }
 }
+
+nexus.write.fun(species.seq.split.one)
+
+```
+
+A few functions to calculate mean pi per species per cell, the number of sequences per species per cell, and the second Hill number per cell. I'm aligning sequences with clustal omega after reading them in. Note* using clustal omega in the ape R package requires having a copy of clustal omega downloaded and accessible either through their PATH or have it indicated in the clustalomega() argument.
+```{r}
+#create function to read, align, and calculate mean raw genetic distance (pi) from the sequences.
+gen.calc.fun <- function(x) {
+  #print(x) #print if debugging
+  rawseq <- read.nexus.data(x)
+  binseq <- as.DNAbin(rawseq)
+  alignseq <- clustalomega(binseq)
+  dist <- dist.dna(alignseq, model = "raw")
+  return(mean(dist))
+}
+
+
+## Get one hill number from a list of genetic distances. Original python code written by Isaac Overcast
+hill.calc <- function(dists, order) { 
+  if (order == 0) {
+    return(length(dists[dists > 0]))
+  }
+  if (order == 1) {
+    h1 = exp(entropy::entropy(dists))
+    return(h1)
+  }
+  else {
+    tot = sum(dists)
+    proportions = dists[dists > 0]/tot
+    prop_order = proportions**order
+    h2 = sum(prop_order)**(1/(1-order))
+    return(h2)
+  }
+}
+```
+
+
+Calculate genetic diversity statistics for each cell. I had to manually edit several nexus files due to some sequences denoting gaps with spaces and some using dashes.
+```{r}
+#get a list of the nexus files
+files <- paste0("../bold-seqs/", list.files("../bold-seqs"))
+
+#only run if I need to re-calculate pi for everything. Takes forever
+#pi.total.one <- files %>% sapply(gen.calc.fun) #calculate pi for all each species within each cell
+
+#function to only extract cell number from the name of the sequence. Some species names include a number, so I need to extract only the second number grouping
+sec.num.fun <- function(n) {
+  for (i in seq_along(n)) {
+    if (length(n[[i]]) > 1){
+      n[[i]] <- n[[i]][2]
+    }
+  }
+  return(n)
+}
+
+pi.names.one <- str_match_all(names(pi.total.one), "[0-9]+") %>% sec.num.fun() %>% unlist() #make a vector of the cell numbers for each pi calculation
+
+pi.df.one <- bind_cols(cells = pi.names.one, pi = unname(pi.total.one)) #create dataframe of pi calculations
+###I wrote this to a csv so I don't have to re-run the pi calculation script
+
+
+#####Next project- figure out how to effectively filter after calculating pi
+
+
+pi.medians.one <- pi.df.one %>% group_by(cells) %>% dplyr::summarise(median.pi = median(pi), hill.num = hill.calc(pi, 1), shannon = entropy::entropy(pi)) #calculate pi for each cell number. I'm using dplyr::summarise because plyr also has a summarise function that can create a lot of confusion.
+
+pi.no.na <- na.omit(pi.medians.one)
+
+pts.ext.one.pi <- merge(pts_ext_1d, pi.means.no.na, by = "cells") #make new spatial data frame including the pi values
+
+
+pi.raster.one <- rasterize(pts.ext.one.pi, sa_clim_1d, fun = "first", field = "mean.pi") #create new raster of mean pi values per cell
+
+pal.one <- pal.phylum <- colorBin(palette = "inferno", bins = seq(0, max(na.omit(pts.ext.one.pi$mean.pi)), length.out = 10), domain = NULL, pretty = TRUE, na.color = "#00000000")
+
+leaflet() %>% 
+  addTiles() %>%
+  addRasterImage(pi.raster.one, colors = pal.one,  opacity = 0.8) %>%
+  addLegend(pal = pal.one, values = values(pi.raster.one))
+
+#plot the mean pi value as a function of the number of sequences to see if the number of sequences influence the calculation of genetic diversity. It appears to.
+plot(pi.means.one$mean.pi ~ pi.means.one$numseq)
+model <- lm(mean.pi ~ numseq, data = pi.means.one)
+abline(model)
+```
+
+
+
+
+
+
+
+
+
+
+
