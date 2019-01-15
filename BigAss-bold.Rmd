@@ -30,13 +30,15 @@ Make a raster of the number of individuals per cell we've obtained after filteri
 ```{r}
 
 #Reading in an environmental raster (world clim 2.0 bio1 raster) at 10 arc-minute resolution to use as a raster that utilizes lat-long coordinates for its cells. The raster isn't what's important, what is important is the raster resolution. 
-f <- "/Users/connorfrench/Dropbox/Old_Mac/climate-data/wc2.0_10m_bio/wc2.0_bio_10m_01.tif" #raster location
+f <- list.files("/Users/connorfrench/Dropbox/Old_Mac/climate-data/wc2.0_10m_bio/", full.names = TRUE) #raster location
 
-#bounds <- extent(-80, -35, -40, 15) #Reduce extent of raster to our area of interest- South America
+bounds <- extent(-85, -30, -45, 15) #Reduce extent of raster to our area of interest- South America
 
-sa_clim_1d <- raster(f) %>% 
-  #crop(bounds) %>% 
-  aggregate(fact = 6) #read in raster, crop it, and downscale the resolution to 1 degree
+sa_clim_1d <- stack(f) %>% #read in bioclim rasters, downscale the resolution to 1 degree, and crop them
+  aggregate(fact = 6) %>%
+  crop(bounds)
+
+
 
 #get the cell number of each coordinate pair for filtering.
 pts_ext_1d <- raster::extract(sa_clim_1d, coord_points, fun = "count", sp = TRUE, cellnumbers = TRUE) %>% 
@@ -46,7 +48,7 @@ pts_ext_1d <- raster::extract(sa_clim_1d, coord_points, fun = "count", sp = TRUE
   group_by(species_name, cells) %>% #group the data set by species, then by cell number
   filter(n() > 2) %>% #retain only observations where there are more than two species observations per cell
   ungroup() %>%
-  droplevels()
+  drop.levels()
 
 coordinates(pts_ext_1d) <- ~Long+Lat #convert to a spatial data frame
 
@@ -98,17 +100,22 @@ leaflet(data = sa_clim_1d) %>%
 ```
 
 
-Write the sequence data in the BOLD csv to nexus files. Writing all species with greater than 3 individuals per file to a nexus file. I will filter for cells with different numbers of species per cell later. Each nexus file is labeled as "speciesname.cell.nex".
+Write the sequence data in the BOLD csv to nexus files. Writing nexus files for species where there are at least three observations and occupy cells where there are at least nine species per cell.  Each nexus file is labeled as "speciesname.cell.nex".
 ```{r}
-#####split 
-test.nuc <- subset(pts_ext_1d, select = c(recordID, species_name, cells, marker_codes, nucleotides)) %>% 
-  as.data.frame() %>%
+#####filter data for the ideal number of individuals and species per cell
+test.nuc <- as.data.frame(pts_ext_1d) %>%
+  select(recordID, species_name, cells, marker_codes, nucleotides, contains("bio_10m")) %>% 
   distinct(recordID, .keep_all = TRUE) %>% #only retain unique individuals
   na.omit() %>%
   group_by(species_name, cells) %>% #group the data set by species, then by cell number
   filter(str_detect(marker_codes, "COI"), !str_detect(marker_codes, "COII")) %>% #Filter for only COI sequences
-  filter(n() > 9) %>% #retain only observations where there are more than two species observations per cell
+  filter(n() > 2) %>% #retain only cells where there are more than two species observations per cell
+  ungroup() %>%
+  group_by(cells) %>%
+  filter(n_distinct(species_name) > 9) %>% #retain cells with 10 or more species
+  ungroup() %>%
   drop.levels()
+
 
 
 #####Code for padding short sequences with gaps
@@ -138,7 +145,7 @@ species.seq.split.one <- test.nuc %>%
   drop.levels()
 
 #create directory to put nexus files
-dir.create("../bold-seqs")
+dir.create("../bold-seqs-10")
 #function to write nexus files
 nexus.write.fun <- function(x) {
   for (i in seq_along(x)) {
@@ -149,7 +156,7 @@ nexus.write.fun <- function(x) {
       nuc.vec <- strsplit(nuc.df[,5], "") #nucleotide column. Need to split nucleotides into individual characters.
       names(nuc.vec) <- paste(nuc.df[,1]) #names are the recordIDs
       nuc.pad <- gap.fix.fun(nuc.vec) #pad nucleotides with "N"s
-      write.nexus.data(nuc.pad, file = paste0("../bold-seqs/", str_replace(unique(nuc.df[,2]), " ", "-"), ".", unique(nuc.df[,3]), ".nex"), missing = "N", interleaved = FALSE) #write to a nexus file, which is named by the species and cell number
+      write.nexus.data(nuc.pad, file = paste0("../bold-seqs-10/", str_replace(unique(nuc.df[,2]), " ", "-"), ".", unique(nuc.df[,3]), ".nex"), missing = "N", interleaved = FALSE) #write to a nexus file, which is named by the species and cell number
     }
   }
 }
@@ -194,16 +201,16 @@ hill.calc <- function(dists, order) {
 Calculate genetic diversity statistics for each cell. I had to manually edit several nexus files due to some sequences denoting gaps with spaces and some using dashes.
 ```{r}
 #get a list of the nexus files
-files <- paste0("../bold-seqs/", list.files("../bold-seqs"))
+files <- paste0("../bold-seqs-10/", list.files("../bold-seqs-10"))
 
 #only run if I need to re-calculate pi for everything. Takes forever
-#pi.total.one <- files %>% sapply(gen.calc.fun) #calculate pi for all each species within each cell
+pi.total.one <- files %>% sapply(gen.calc.fun) #calculate pi for all each species within each cell
 
-#function to only extract cell number from the name of the sequence. Some species names include a number, so I need to extract only the second number grouping
+#function to only extract cell number from the name of the sequence. Some species names include a number, so I need to extract only the last number grouping
 sec.num.fun <- function(n) {
   for (i in seq_along(n)) {
     if (length(n[[i]]) > 1){
-      n[[i]] <- n[[i]][2]
+      n[[i]] <- n[[i]][length(n[[i]])]
     }
   }
   return(n)
@@ -213,37 +220,58 @@ pi.names.one <- str_match_all(names(pi.total.one), "[0-9]+") %>% sec.num.fun() %
 
 pi.df.one <- bind_cols(cells = pi.names.one, pi = unname(pi.total.one)) #create dataframe of pi calculations
 ###I wrote this to a csv so I don't have to re-run the pi calculation script
+#write.csv(pi.df.one, file = "raw-pi-10.csv")
+#pi.df.one <- read.csv("raw-pi-10.csv")
 
 
-#####Next project- figure out how to effectively filter after calculating pi
+#function to calculate pi for each cell number. I'm using dplyr::summarise because plyr also has a summarise function that can create a lot of confusion.
+pi.summary.fun <- function(df) {
+  gdf <- group_by(df, cells)
+  sdf <- sample_n(gdf, 10)
+  sum.df <- dplyr::summarise(sdf, median.pi = median(pi), mean.pi = mean(pi), sd.pi = sd(pi), hill.zero = hill.calc(pi, 0), hill.one = hill.calc(pi, 1), hill.two = hill.calc(pi, 2), shannon = entropy::entropy(pi))
+  return(sum.df)
+}
 
 
-pi.medians.one <- pi.df.one %>% group_by(cells) %>% dplyr::summarise(median.pi = median(pi), hill.num = hill.calc(pi, 1), shannon = entropy::entropy(pi)) #calculate pi for each cell number. I'm using dplyr::summarise because plyr also has a summarise function that can create a lot of confusion.
+#replicate the sampling 1000 times
+sum.list<- replicate(1000, pi.summary.fun(pi.df.one), simplify = FALSE) 
 
-pi.no.na <- na.omit(pi.medians.one)
+#summarise these samples into a final df
+sum.df <- bind_rows(sum.list) %>%
+  group_by(cells) %>% 
+  dplyr::summarise(median.pi.avg = mean(median.pi), median.pi.sd = sd(median.pi), mean.pi.avg = mean(mean.pi),  mean.pi.sd = sd(mean.pi), hill.zero.avg = mean(hill.zero), hill.zero.sd = sd(hill.zero), hill.one.avg = mean(hill.one), hill.one.sd = sd(hill.one), hill.two.avg = mean(hill.two), hill.two.sd = sd(hill.two), shannon.avg = mean(shannon), shannon.sd = sd(shannon))
+write.csv(sum.df, file = "pi-summary-10.csv")
 
-pts.ext.one.pi <- merge(pts_ext_1d, pi.means.no.na, by = "cells") #make new spatial data frame including the pi values
+#make new data frame including the pi values.
+pi.plot <- merge(pts_ext_1d_sp, sum.df, by = "cells") %>% 
+  raster::as.data.frame(xy = TRUE) %>% #have to convert to data frame to omit NAs
+  subset(select = c(recordID, species_name, cells, marker_codes, median.pi.avg, median.pi.sd, mean.pi.avg, mean.pi.sd, hill.zero.avg, hill.zero.sd, hill.one.avg, hill.one.sd, hill.two.avg, hill.two.sd, shannon.avg, shannon.sd, Long, Lat)) %>%
+  na.omit() %>%
+  drop.levels()
+
+#convert back to a spatial data frame
+coordinates(pi.plot) <- ~Long+Lat
 
 
-pi.raster.one <- rasterize(pts.ext.one.pi, sa_clim_1d, fun = "first", field = "mean.pi") #create new raster of mean pi values per cell
+#create new raster of mean pi values per cell
+pi.raster.one <- rasterize(pi.plot, sa_clim_1d, fun = "first", field = "mean.pi.avg") 
 
-pal.one <- pal.phylum <- colorBin(palette = "inferno", bins = seq(0, max(na.omit(pts.ext.one.pi$mean.pi)), length.out = 10), domain = NULL, pretty = TRUE, na.color = "#00000000")
+#color palette for leaflet plot
+pal.one <- colorNumeric(palette = "viridis", domain = NULL, na.color = "#00000000")
 
+#leaflet plot
 leaflet() %>% 
   addTiles() %>%
   addRasterImage(pi.raster.one, colors = pal.one,  opacity = 0.8) %>%
   addLegend(pal = pal.one, values = values(pi.raster.one))
 
-#plot the mean pi value as a function of the number of sequences to see if the number of sequences influence the calculation of genetic diversity. It appears to.
-plot(pi.means.one$mean.pi ~ pi.means.one$numseq)
-model <- lm(mean.pi ~ numseq, data = pi.means.one)
-abline(model)
+
 ```
 
 
 
 
-
+NEED TO FIGURE OUT CELL NUMBERING PROBLEM
 
 
 

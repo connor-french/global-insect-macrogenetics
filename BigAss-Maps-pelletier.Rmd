@@ -46,7 +46,7 @@ pelletier.vert <- subset(pelletier.data, latitude < 12.5) %>%
   subset(latitude > -42) %>%
   subset(longitude < -30) %>%
   subset(longitude > -82)  %>%
-  subset(vertebrate == "Vertebrata") %>%
+  #subset(vertebrate == "Vertebrata") %>%
   droplevels.data.frame() 
 ```
 
@@ -61,8 +61,6 @@ coord_points <- st_as_sf(pelletier.vert, coords = c("longitude", "latitude"),
                          crs = 4326, agr = "constant")
 
 
-#load a world map as the base map.
-w_map <- map("world", plot = FALSE)
 
 #make color palette
 pal <- colorFactor(palette = "inferno", domain = NULL, na.color = "#00000000")
@@ -74,7 +72,7 @@ pal <- colorFactor(palette = "inferno", domain = NULL, na.color = "#00000000")
 #                     coord_points$geometry)
 
 #plot in leafly
-leaflet(data = w_map) %>% 
+leaflet() %>% 
   addTiles() %>%
   addCircleMarkers(data = coord_points,
                   #color = ~pal(Country),
@@ -100,9 +98,9 @@ pal2 <- colorNumeric(palette = "inferno", domain = NULL, na.color = "#00000000")
 #Reading in an environmental raster (world clim 2.0 bio1 raster) at 10 arc-minute resolution to use as a raster that utilizes lat-long coordinates for its cells. The raster isn't what's important, what is important is the raster resolution. 
 f <- "/Users/connorfrench/Dropbox/Old_Mac/climate-data/wc2.0_10m_bio/wc2.0_bio_10m_01.tif" #raster location
 
-bounds <- extent(-80, -35, -40, 15) #Reduce extent of raster to our area of interest- South America
+#bounds <- extent(-80, -35, -40, 15) #Reduce extent of raster to our area of interest- South America
 
-sa_clim_1d <- raster(f) %>% crop(bounds) %>% aggregate(fact = 6) #read in raster, crop it, and downscale the resolution to 1 degree
+sa_clim_1d <- raster(f) %>%  aggregate(fact = 6) #read in raster, crop it, and downscale the resolution to 1 degree
 
 #get the cell number of each coordinate pair for filtering. 19459.
 pts_ext_1d <- raster::extract(sa_clim_1d, coord_points, fun = "count", sp = TRUE, cellnumbers = TRUE) %>% 
@@ -190,8 +188,10 @@ Now I'm going to look at species density per cell for the three resolutions! Jus
 
 100 km. 
 ```{r}
-pts_ext_1d_sp <- as.data.frame(pts_ext_1d) #convert to data frame for filtering
-pts_ext_1d_sp <- pts_ext_1d_sp[!duplicated(pts_ext_1d_sp[c("species", "cells")]),] #filter for unique species in each cell
+pts_ext_1d_sp <- as.data.frame(pts_ext_1d) %>% #convert to data frame for filtering
+  group_by(cells) %>%
+  filter(n_distinct(species) > 2) %>%
+  ungroup()
 
 coordinates(pts_ext_1d_sp) <- ~Long+Lat #convert to a spatial data frame
 
