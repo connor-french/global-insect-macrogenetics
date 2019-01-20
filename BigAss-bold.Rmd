@@ -5,7 +5,7 @@ output: html_notebook
 
 
 Load packages, read in data, and filter for NAs
-```{r}
+```{r include = FALSE}
 library(data.table)
 library(tidyverse)
 library(leaflet)
