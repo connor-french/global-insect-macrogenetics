@@ -1,6 +1,12 @@
 ---
 title: "BigAss BOLD"
-output: html_notebook
+always_allow_html: yes
+output: 
+  html_notebook:
+    theme: flatly
+    highlight: tango
+  github_document:
+    toc: true
 ---
 
 
@@ -13,6 +19,7 @@ library(sf)
 library(raster)
 library(ape)
 library(gdata)
+library(entropy)
 
 bold.data <- fread("../bold_data_total.txt", na.strings = c("","NA"))
 bold.data <- bold.data[!is.na(bold.data$lat),]
@@ -104,7 +111,7 @@ Write the sequence data in the BOLD csv to nexus files. Writing nexus files for 
 ```{r}
 #####filter data for the ideal number of individuals and species per cell
 test.nuc <- as.data.frame(pts_ext_1d) %>%
-  select(recordID, species_name, cells, marker_codes, nucleotides, contains("bio_10m")) %>% 
+  dplyr::select(recordID, species_name, cells, marker_codes, nucleotides, contains("bio_10m")) %>% 
   distinct(recordID, .keep_all = TRUE) %>% #only retain unique individuals
   na.omit() %>%
   group_by(species_name, cells) %>% #group the data set by species, then by cell number
@@ -172,7 +179,7 @@ gen.calc.fun <- function(x) {
   #print(x) #print if debugging
   rawseq <- read.nexus.data(x)
   binseq <- as.DNAbin(rawseq)
-  alignseq <- clustalomega(binseq)
+  alignseq <- clustalomega(binseq) 
   dist <- dist.dna(alignseq, model = "raw")
   return(mean(dist))
 }
