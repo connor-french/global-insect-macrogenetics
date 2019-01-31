@@ -1,15 +1,13 @@
 ---
 title: "BigAss BOLD"
 always_allow_html: yes
-output: 
+output: # use rmarkdown::render(<your-rmd-file.rmd>, output_format ="all" in the console to render both outputs
   html_notebook:
     theme: flatly
     highlight: tango
   github_document:
     toc: true
 ---
-
-
 Load packages, read in data, and filter for NAs
 ```{r include = FALSE}
 library(data.table)
@@ -61,7 +59,7 @@ coordinates(pts_ext_1d) <- ~Long+Lat #convert to a spatial data frame
 
 count_pts_1d <- rasterize(pts_ext_1d, sa_clim_1d, fun = "count", field = "species_name") #make a raster out of the counts of observations per cell
 
-pal.vert <- colorBin(palette = "inferno", bins = c(0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100,300,500,1000,1500,2000), domain = NULL, pretty = TRUE, na.color = "#00000000")
+pal.vert <- colorBin(palette = "inferno", bins = c(0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100,300,500,1000,1500,2000, 3000), domain = NULL, pretty = TRUE, na.color = "#00000000")
 
 
 #plot count map
@@ -75,7 +73,7 @@ Plot of the number of species per cell after filtering for cells that contain te
 ```{r}
 pts_ext_1d_sp <- as.data.frame(pts_ext_1d) %>% #convert to data frame for filtering
   group_by(cells) %>%
-  filter(n_distinct(species_name) > 9) %>%
+  filter(n_distinct(species_name) > 5) %>%
   ungroup()
 
 
@@ -110,8 +108,9 @@ leaflet(data = sa_clim_1d) %>%
 Write the sequence data in the BOLD csv to nexus files. Writing nexus files for species where there are at least three observations and occupy cells where there are at least nine species per cell.  Each nexus file is labeled as "speciesname.cell.nex".
 ```{r}
 #####filter data for the ideal number of individuals and species per cell
-test.nuc <- as.data.frame(pts_ext_1d) %>%
-  dplyr::select(recordID, species_name, cells, marker_codes, nucleotides, contains("bio_10m")) %>% 
+test.nuc <- pts_ext_1d %>% 
+  raster::as.data.frame(xy = TRUE) %>%
+  dplyr::select(recordID, species_name, cells, marker_codes, nucleotides, Lat, Long, contains("bio_10m")) %>% 
   distinct(recordID, .keep_all = TRUE) %>% #only retain unique individuals
   na.omit() %>%
   group_by(species_name, cells) %>% #group the data set by species, then by cell number
@@ -119,7 +118,7 @@ test.nuc <- as.data.frame(pts_ext_1d) %>%
   filter(n() > 2) %>% #retain only cells where there are more than two species observations per cell
   ungroup() %>%
   group_by(cells) %>%
-  filter(n_distinct(species_name) > 9) %>% #retain cells with 10 or more species
+  filter(n_distinct(species_name) > 2) %>% #retain cells with 10 or more species
   ungroup() %>%
   drop.levels()
 
@@ -152,7 +151,7 @@ species.seq.split.one <- test.nuc %>%
   drop.levels()
 
 #create directory to put nexus files
-dir.create("../bold-seqs-10")
+dir.create("../bold-seqs-3")
 #function to write nexus files
 nexus.write.fun <- function(x) {
   for (i in seq_along(x)) {
@@ -163,7 +162,7 @@ nexus.write.fun <- function(x) {
       nuc.vec <- strsplit(nuc.df[,5], "") #nucleotide column. Need to split nucleotides into individual characters.
       names(nuc.vec) <- paste(nuc.df[,1]) #names are the recordIDs
       nuc.pad <- gap.fix.fun(nuc.vec) #pad nucleotides with "N"s
-      write.nexus.data(nuc.pad, file = paste0("../bold-seqs-10/", str_replace(unique(nuc.df[,2]), " ", "-"), ".", unique(nuc.df[,3]), ".nex"), missing = "N", interleaved = FALSE) #write to a nexus file, which is named by the species and cell number
+      write.nexus.data(nuc.pad, file = paste0("../bold-seqs-3/", str_replace(unique(nuc.df[,2]), " ", "-"), ".", unique(nuc.df[,3]), ".nex"), missing = "N", interleaved = FALSE) #write to a nexus file, which is named by the species and cell number
     }
   }
 }
@@ -208,7 +207,7 @@ hill.calc <- function(dists, order) {
 Calculate genetic diversity statistics for each cell. I had to manually edit several nexus files due to some sequences denoting gaps with spaces and some using dashes.
 ```{r}
 #get a list of the nexus files
-files <- paste0("../bold-seqs-10/", list.files("../bold-seqs-10"))
+files <- paste0("../bold-seqs-3/", list.files("../bold-seqs-3"))
 
 #only run if I need to re-calculate pi for everything. Takes forever
 pi.total.one <- files %>% sapply(gen.calc.fun) #calculate pi for all each species within each cell
@@ -227,33 +226,35 @@ pi.names.one <- str_match_all(names(pi.total.one), "[0-9]+") %>% sec.num.fun() %
 
 pi.df.one <- bind_cols(cells = pi.names.one, pi = unname(pi.total.one)) #create dataframe of pi calculations
 ###I wrote this to a csv so I don't have to re-run the pi calculation script
-#write.csv(pi.df.one, file = "raw-pi-10.csv")
-#pi.df.one <- read.csv("raw-pi-10.csv")
+write.csv(pi.df.one, file = "raw-pi-3.csv")
+pi.df.one <- fread("raw-pi-3.csv")
 
 
-#function to calculate pi for each cell number. I'm using dplyr::summarise because plyr also has a summarise function that can create a lot of confusion.
-pi.summary.fun <- function(df) {
+#function to calculate pi for each cell number. I'm using dplyr::summarise because plyr also has a summarise function that can create a lot of confusion. nspec is the number of species per cell that were filtered
+pi.summary.fun <- function(df, nspec) {
   gdf <- group_by(df, cells)
-  sdf <- sample_n(gdf, 10)
+  sdf <- sample_n(gdf, nspec)
   sum.df <- dplyr::summarise(sdf, median.pi = median(pi), mean.pi = mean(pi), sd.pi = sd(pi), hill.zero = hill.calc(pi, 0), hill.one = hill.calc(pi, 1), hill.two = hill.calc(pi, 2), shannon = entropy::entropy(pi))
   return(sum.df)
 }
 
 
-#replicate the sampling 1000 times
-sum.list<- replicate(1000, pi.summary.fun(pi.df.one), simplify = FALSE) 
+#replicate the sampling 1000 times. 
+sum.list<- replicate(1000, pi.summary.fun(pi.df.one, 3), simplify = FALSE) 
 
 #summarise these samples into a final df
 sum.df <- bind_rows(sum.list) %>%
   group_by(cells) %>% 
   dplyr::summarise(median.pi.avg = mean(median.pi), median.pi.sd = sd(median.pi), mean.pi.avg = mean(mean.pi),  mean.pi.sd = sd(mean.pi), hill.zero.avg = mean(hill.zero), hill.zero.sd = sd(hill.zero), hill.one.avg = mean(hill.one), hill.one.sd = sd(hill.one), hill.two.avg = mean(hill.two), hill.two.sd = sd(hill.two), shannon.avg = mean(shannon), shannon.sd = sd(shannon))
-write.csv(sum.df, file = "pi-summary-10.csv")
+write.csv(sum.df, file = "pi-summary-3.csv")
+sum.df <- fread("pi-summary-10.csv")
 
 #make new data frame including the pi values.
-pi.plot <- merge(pts_ext_1d_sp, sum.df, by = "cells") %>% 
+pi.plot <- merge(test.nuc, sum.df, by = "cells") %>% 
   raster::as.data.frame(xy = TRUE) %>% #have to convert to data frame to omit NAs
-  subset(select = c(recordID, species_name, cells, marker_codes, median.pi.avg, median.pi.sd, mean.pi.avg, mean.pi.sd, hill.zero.avg, hill.zero.sd, hill.one.avg, hill.one.sd, hill.two.avg, hill.two.sd, shannon.avg, shannon.sd, Long, Lat)) %>%
-  na.omit() %>%
+  dplyr::select(recordID, species_name, cells, marker_codes, median.pi.avg, median.pi.sd, mean.pi.avg, mean.pi.sd, hill.zero.avg, hill.zero.sd, hill.one.avg, hill.one.sd, hill.two.avg, hill.two.sd, shannon.avg, shannon.sd, Long, Lat, contains("bio_10m")) %>%
+  filter(mean.pi.avg < 0.035) %>% #cells largest pi values contain "species" which actually contain different species
+  #na.omit() %>%
   drop.levels()
 
 #convert back to a spatial data frame
@@ -276,12 +277,117 @@ leaflet() %>%
 ```
 
 
+MARS modeling of genetic diversity ~ environment. First model is a MARS model using generalized cross-validation
+Load packages
+```{r include = FALSE}
+library(tidymodels)
+library(earth)
+library(caret)
+library(ggrepel)
+```
 
 
-NEED TO FIGURE OUT CELL NUMBERING PROBLEM
+Do the stuff
+```{r}
+mars.data <- pi.plot %>% 
+  raster::as.data.frame(xy = TRUE) %>% 
+  filter(!duplicated(cells)) %>% 
+  dplyr::select(median.pi.avg, contains("bio_10m")) %>% 
+  na.omit()
+
+
+#split into training and testing data
+mars.split <- initial_split(mars.data, prop = 4/5)
+
+###########create training data set##############
+mars.training <- training(mars.split)
+
+#select bioclims as features
+mars.training.features <- mars.training %>% dplyr::select(contains("bio_10m")) 
+
+#select mean pi as response
+mars.training.response <- mars.training %>% dplyr::select(median.pi.avg) %>% as.matrix() %>% as.numeric()
+
+#list of feature dataframe and response matrix
+mars.training <- list(features = mars.training.features, response =  mars.training.response) 
+
+############create testing data set############
+mars.test <- testing(mars.split) 
+
+#select bioclims as features
+mars.test.features <- mars.test %>% dplyr::select(contains("bio_10m")) 
+
+#select mean pi as response
+mars.test.response <- mars.test %>% dplyr::select(median.pi.avg) %>% as.matrix() %>% as.numeric()
+
+#list of feature dataframe and response matrix
+mars.test <- list(features = mars.test.features, response =  mars.test.response) 
 
 
 
+featurePlot(mars.training$features, mars.training$response)
 
+#gcv model
+mars.fit.gcv <- earth(mars.training$features, mars.training$response)
+mars.pred.gcv <- predict(mars.fit.gcv, mars.test$features)
+
+mars.plot.data <- tibble(pred = as.numeric(mars.pred.gcv), obs = as.numeric(mars.test$response))
+
+ggplot(mars.plot.data, aes(x = obs, y = pred)) +
+  geom_point() +
+  geom_abline(alpha = 0.5)
+
+mars.fit.gcv
+
+```
+
+
+```{r}
+#5-fold cross validation
+mars.grid <- expand.grid(degree = 1:2, nprune = seq(2, 19, by = 1))
+
+#5-fold cross-validation
+ctrl <- trainControl(
+  method = "cv", 
+  number = 10,
+  # Save the assessment predictions from the best model
+  savePredictions = "final",
+  # Log the progress of the tuning process
+  verboseIter = FALSE
+  )
+
+# Using the same seed to obtain the same 
+# resamples.
+set.seed(925989)
+mars_mod <- train(
+  mars.training$features, 
+  mars.training$response,
+  method = "earth",
+  tuneGrid = mars.grid,
+  trControl = ctrl
+)
+
+ggplot(mars_mod) + theme(legend.position = "top")
+```
+
+
+```{r}
+mars_imp <- varImp(mars_mod)
+ggplot(mars_imp, top = 20) + xlab("")
+
+ggplot(mars_mod$pred, aes(x = pred, y = obs)) +
+  geom_point() +
+  geom_abline()
+```
+
+
+prediction performance
+```{r}
+mars.test.cv <- mars.test %>% 
+  as_tibble() %>% 
+  mutate(pred = as.vector(mars.pred.gcv))
+rmse(mars.test.cv, truth = response, estimate = pred)
+rsq(mars.test.cv, truth = response, estimate = pred)
+```
 
 
