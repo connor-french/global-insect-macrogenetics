@@ -40,8 +40,9 @@ f <- list.files("/Users/connorfrench/Dropbox/Old_Mac/climate-data/wc2.0_10m_bio/
 bounds <- extent(-85, -30, -45, 15) #Reduce extent of raster to our area of interest- South America
 
 sa_clim_1d <- stack(f) %>% #read in bioclim rasters, downscale the resolution to 1 degree, and crop them
-  aggregate(fact = 6) %>%
-  crop(bounds)
+  crop(bounds) %>% 
+  aggregate(fact = 6) 
+  
 
 
 
@@ -287,7 +288,7 @@ library(ggrepel)
 ```
 
 
-Do the stuff
+REDO THE ANALYSES WITH A RECIPE
 ```{r}
 mars.data <- pi.plot %>% 
   raster::as.data.frame(xy = TRUE) %>% 
@@ -383,11 +384,11 @@ ggplot(mars_mod$pred, aes(x = pred, y = obs)) +
 
 prediction performance
 ```{r}
-mars.test.cv <- mars.test %>% 
+mars.test.cv <- mars.test$features %>% 
   as_tibble() %>% 
-  mutate(pred = as.vector(mars.pred.gcv))
-rmse(mars.test.cv, truth = response, estimate = pred)
-rsq(mars.test.cv, truth = response, estimate = pred)
+  mutate(pred = predict(mars_mod, .$features))# %>% 
+  summarise(rmse = rmse_vec(., truth = obs, estimate = pred), rsq = rsq_vec(., truth = obs, estimate = pred))
+
 ```
 
 
