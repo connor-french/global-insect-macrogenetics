@@ -188,7 +188,7 @@ gen.calc.fun <- function(x) {
 ## Get one hill number from a list of genetic distances. Original python code written by Isaac Overcast
 hill.calc <- function(dists, order) { 
   if (order == 0) {
-    return(length(dists[dists > 0]))
+    return(length(dists))
   }
   if (order == 1) {
     h1 = exp(entropy::entropy(dists))
@@ -228,7 +228,7 @@ pi.names.one <- str_match_all(names(pi.total.one), "[0-9]+") %>% sec.num.fun() %
 pi.df.one <- bind_cols(cells = pi.names.one, pi = unname(pi.total.one)) #create dataframe of pi calculations
 ###I wrote this to a csv so I don't have to re-run the pi calculation script
 write.csv(pi.df.one, file = "raw-pi-3.csv")
-pi.df.one <- fread("raw-pi-3.csv")
+pi.df.one <- fread("raw-pi-10.csv")
 
 
 #function to calculate pi for each cell number. I'm using dplyr::summarise because plyr also has a summarise function that can create a lot of confusion. nspec is the number of species per cell that were filtered
@@ -241,13 +241,13 @@ pi.summary.fun <- function(df, nspec) {
 
 
 #replicate the sampling 1000 times. 
-sum.list<- replicate(1000, pi.summary.fun(pi.df.one, 3), simplify = FALSE) 
+sum.list<- replicate(1000, pi.summary.fun(pi.df.one, 10), simplify = FALSE) 
 
 #summarise these samples into a final df
 sum.df <- bind_rows(sum.list) %>%
   group_by(cells) %>% 
   dplyr::summarise(median.pi.avg = mean(median.pi), median.pi.sd = sd(median.pi), mean.pi.avg = mean(mean.pi),  mean.pi.sd = sd(mean.pi), hill.zero.avg = mean(hill.zero), hill.zero.sd = sd(hill.zero), hill.one.avg = mean(hill.one), hill.one.sd = sd(hill.one), hill.two.avg = mean(hill.two), hill.two.sd = sd(hill.two), shannon.avg = mean(shannon), shannon.sd = sd(shannon))
-write.csv(sum.df, file = "pi-summary-3.csv")
+write.csv(sum.df, file = "pi-summary-10.csv")
 sum.df <- fread("pi-summary-10.csv")
 
 #make new data frame including the pi values.
@@ -293,7 +293,7 @@ REDO THE ANALYSES WITH A RECIPE
 mars.data <- pi.plot %>% 
   raster::as.data.frame(xy = TRUE) %>% 
   filter(!duplicated(cells)) %>% 
-  dplyr::select(median.pi.avg, contains("bio_10m")) %>% 
+  dplyr::select(hill.one.avg, contains("bio_10m")) %>% 
   na.omit()
 
 
@@ -307,7 +307,7 @@ mars.training <- training(mars.split)
 mars.training.features <- mars.training %>% dplyr::select(contains("bio_10m")) 
 
 #select mean pi as response
-mars.training.response <- mars.training %>% dplyr::select(median.pi.avg) %>% as.matrix() %>% as.numeric()
+mars.training.response <- mars.training %>% dplyr::select(hill.one.avg) %>% as.matrix() %>% as.numeric()
 
 #list of feature dataframe and response matrix
 mars.training <- list(features = mars.training.features, response =  mars.training.response) 
@@ -319,7 +319,7 @@ mars.test <- testing(mars.split)
 mars.test.features <- mars.test %>% dplyr::select(contains("bio_10m")) 
 
 #select mean pi as response
-mars.test.response <- mars.test %>% dplyr::select(median.pi.avg) %>% as.matrix() %>% as.numeric()
+mars.test.response <- mars.test %>% dplyr::select(hill.one.avg) %>% as.matrix() %>% as.numeric()
 
 #list of feature dataframe and response matrix
 mars.test <- list(features = mars.test.features, response =  mars.test.response) 
@@ -345,11 +345,11 @@ mars.fit.gcv
 
 ```{r}
 #5-fold cross validation
-mars.grid <- expand.grid(degree = 1:2, nprune = seq(2, 19, by = 1))
+mars.grid <- expand.grid(degree = 1:2, nprune = seq(1, 19, by = 1))
 
-#5-fold cross-validation
+#LOOCV
 ctrl <- trainControl(
-  method = "cv", 
+  method = "LOOCV", 
   number = 10,
   # Save the assessment predictions from the best model
   savePredictions = "final",
@@ -359,7 +359,7 @@ ctrl <- trainControl(
 
 # Using the same seed to obtain the same 
 # resamples.
-set.seed(925989)
+set.seed(223489)
 mars_mod <- train(
   mars.training$features, 
   mars.training$response,
