@@ -52,7 +52,7 @@ Make a raster of the number of individuals per cell we've obtained after filteri
 ```{r}
 
 #Reading in an environmental raster (world clim 2.0 bio1 raster) at 10 arc-minute resolution to use as a raster that utilizes lat-long coordinates for its cells. The raster isn't what's important, what is important is the raster resolution. 
-f <- list.files("/Users/connorfrench/Dropbox/Old_Mac/climate-data/wc2.0_10m_bio/", full.names = TRUE) #raster location
+f <- list.files("../wc2.0_10m_bio/", full.names = TRUE) #raster location
 
 #bounds <- extent(-85, -30, -45, 15) #Reduce extent of raster to our area of interest- South America
 
