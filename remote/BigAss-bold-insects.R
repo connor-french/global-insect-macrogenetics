@@ -1,15 +1,15 @@
----
-title: "BigAss BOLD"
-always_allow_html: yes
-output: # use rmarkdown::render(<your-rmd-file.rmd>, output_format ="all" in the console to render both outputs
-  html_notebook:
-    theme: flatly
-    highlight: tango
-  github_document:
-    toc: true
----
-Load packages, read in data, and filter for NAs
-```{r include = FALSE}
+#' ---
+#' title: "BigAss BOLD"
+#' always_allow_html: yes
+#' output: # use rmarkdown::render(<your-rmd-file.rmd>, output_format ="all" in the console to render both outputs
+#'   html_notebook:
+#'     theme: flatly
+#'     highlight: tango
+#'   github_document:
+#'     toc: true
+#' ---
+#' Load packages, read in data, and filter for NAs
+## ----include = FALSE-----------------------------------------------------
 library(data.table)
 library(tidyverse)
 library(tidylog)
@@ -37,7 +37,7 @@ dir.create(paste0("rasters_", Sys.Date()))
 
 
 #read in data and remove any row that contains NA values for latitude, longitude, and bin. Only reading in the first 20000 rows for debugging purposes
-bold.data <- fread("../bold_data_insects.txt", na.strings = c("","NA"), nrows = 20000, quote = "", verbose = TRUE) %>% 
+bold.data <- fread("../bold_data_insects.txt", na.strings = c("","NA"),  quote = "", verbose = TRUE) %>% 
   filter_at(vars(lat, lon, bin_uri), all_vars(!is.na(.))) 
   
 
@@ -45,16 +45,15 @@ bold.data <- fread("../bold_data_insects.txt", na.strings = c("","NA"), nrows = 
 #convert to sf object for plotting
 coord_points <- st_as_sf(bold.data, coords = c("lon", "lat"), 
                          crs = 4326, agr = "constant")
-```
 
-
-Make a raster of the number of individuals per cell we've obtained after filtering for at least three individuals per species per cell and plot. The outlier individuals get filtered out at the next filtering step.
-```{r}
+#' 
+#' 
+#' Make a raster of the number of individuals per cell we've obtained after filtering for at least three individuals per species per cell and plot. The outlier individuals get filtered out at the next filtering step.
+## ------------------------------------------------------------------------
 
 #Reading in an environmental raster (world clim 2.0 bio1 raster) at 10 arc-minute resolution to use as a raster that utilizes lat-long coordinates for its cells. The raster isn't what's important, what is important is the raster resolution. 
 f <- list.files("../wc2.0_10m_bio/", full.names = TRUE) #raster location
 
-#bounds <- extent(-85, -30, -45, 15) #Reduce extent of raster to our area of interest- South America
 
 sa_clim_1d <- stack(f) %>% #read in bioclim rasters, downscale the resolution to 1 degree, and crop them
 #  crop(bounds) %>% 
@@ -88,7 +87,7 @@ coordinates(pts_ext_1d) <- ~Long+Lat #convert to a spatial data frame
 
 count_pts_1d <- rasterize(pts_ext_1d, sa_clim_1d, fun = "count", field = "bin_uri") #make a raster out of the counts of observations per cell
 
-pal.vert <- colorBin(palette = "inferno", bins = c(0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100,300,500,1000,1500,2000, 3000,10000), domain = NULL, pretty = TRUE, na.color = "#00000000")
+pal.vert <- colorBin(palette = "inferno", bins = 10, domain = NULL, pretty = TRUE, na.color = "#00000000")
 
 
 #plot count map
@@ -100,11 +99,11 @@ all_plot <- leaflet(data = sa_clim_1d) %>%
 #write raster to file
 writeRaster(count_pts_1d, filename = paste0("rasters_", Sys.Date(), "/all_species_count_", Sys.Date(),".tif"), format = "GTiff")
 
-mapview::mapshot(all_plot, url = paste0(getwd(), "/plots_", Sys.Date(), "/all_species_count_", Sys.Date(),".html"))
-```
+mapview::mapshot(all_plot, selfcontained = FALSE, url = paste0(getwd(), "/plots_", Sys.Date(), "/all_species_count_", Sys.Date(),".html"))
 
-Plot of the number of species per cell after filtering for cells that contain ten or more species
-```{r}
+#' 
+#' Plot of the number of species per cell after filtering for cells that contain ten or more species
+## ------------------------------------------------------------------------
 #convert to data frame for filtering
 pts_ext_1d_sp <- as.data.frame(pts_ext_1d) %>% #convert to data frame for filtering
   group_by(cells) %>%
@@ -132,7 +131,7 @@ coordinates(pts_ext_1d_sp) <- ~Long+Lat
 #make a raster out of the counts of species per cell
 count_pts_1d_sp <- rasterize(pts_ext_1d_sp, sa_clim_1d, fun = function(x, ...) {length(unique(x))}, field = "bin_uri") 
 
-pal.species <- colorBin(palette = "inferno", bins = c(0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100,200,300,500, 1000, 2000, 5000, 10000), domain = NULL, pretty = TRUE, na.color = "#00000000")
+pal.species <- colorBin(palette = "inferno", bins = 10, domain = NULL, pretty = TRUE, na.color = "#00000000")
 
 #plot count map
 filter_count_map <- leaflet(data = sa_clim_1d) %>% 
@@ -144,12 +143,12 @@ filter_count_map <- leaflet(data = sa_clim_1d) %>%
 writeRaster(count_pts_1d_sp, filename = paste0("rasters_", Sys.Date(), "/filter_species_count_", Sys.Date(),".tif"), format = "GTiff")
 
 #write to plots folder
-mapview::mapshot(filter_count_map, url = paste0(getwd(), "/plots_", Sys.Date(), "/filter_species_count_", Sys.Date(), ".html"))
-```
+mapview::mapshot(filter_count_map, selfcontained = FALSE, url = paste0(getwd(), "/plots_", Sys.Date(), "/filter_species_count_", Sys.Date(), ".html"))
 
-
-Write the sequence data in the BOLD csv to nexus files. Writing nexus files for species where there are at least three observations and occupy cells where there are at least nine species per cell.  Each nexus file is labeled as "speciesname.cell.nex".
-```{r}
+#' 
+#' 
+#' Write the sequence data in the BOLD csv to nexus files. Writing nexus files for species where there are at least three observations and occupy cells where there are at least nine species per cell.  Each nexus file is labeled as "speciesname.cell.nex".
+## ------------------------------------------------------------------------
 #####filter data for the ideal number of individuals and species per cell
 test_nuc <- pts_ext_1d %>% 
   raster::as.data.frame(xy = TRUE) %>%
@@ -187,21 +186,27 @@ dir.create(nexus_folder)
 #write nexus files to output folder
 nexus_write_fun(species_seq_split_one, out_folder = nexus_folder)
 
-```
+print("Wrote nexus files")
 
-
-Calculate genetic diversity statistics for each cell. I had to manually edit several nexus files due to some sequences denoting gaps with spaces and some using dashes.
-```{r}
+#' 
+#' 
+#' Calculate genetic diversity statistics for each cell. I had to manually edit several nexus files due to some sequences denoting gaps with spaces and some using dashes.
+## ------------------------------------------------------------------------
 #get a list of the nexus files
 files <- list.files(nexus_folder, full.names = TRUE)
+
+print("Listed nexus files")
 
 #only run if I need to re-calculate pi for everything. Takes forever
 pi_df_one <- files %>% purrr::map_dfr(gen_dist_calc) #calculate avg pi and sd pi for each species within each cell
 
+print("Calculated genetic summary statistics")
 
 ###Write this to a csv. Can read in later if you don't want to run all of the stats again.
 fwrite(pi_df_one, file = paste0("output_", Sys.Date(), "/pi_df_one_", Sys.Date(), ".csv"))
 #pi_df_one <- fread("raw-pi-insects-10.csv")
+
+print("Wrote summary stats to file")
 
 #plot density plots of avg pi and sd pi
 avg_pi_density <- pi_df_one %>% 
@@ -280,9 +285,9 @@ for(stat in gen_sum_vec){
     addRasterImage(pi_raster_one, colors = pal_one,  opacity = 0.8) %>%
     addLegend(pal = pal_one, values = values(pi_raster_one))
   #write to plots folder
-  mapview::mapshot(l, url = paste0(getwd(), "/plots_", Sys.Date(), "/", str_replace_all(stat, "\\.", "_"), "_", Sys.Date(), ".html"))
+  mapview::mapshot(l, selfcontained = FALSE, url = paste0(getwd(), "/plots_", Sys.Date(), "/", str_replace_all(stat, "\\.", "_"), "_", Sys.Date(), ".html"))
 }
  
-```
 
-
+#' 
+#' 

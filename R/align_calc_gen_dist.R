@@ -12,6 +12,5 @@ gen_dist_calc <- function(x, seq_type = "nexus") {
   cell <- str_split_fixed(x, pattern = "_", n = 4)[,4] #extract the cell id from the file name
   cell <- str_split_fixed(cell, pattern = "\\.", n = 2)[,1]
   cell <- str_split_fixed(cell, pattern = "_", n = 2)[,2]
-  cell <- 
   list(cells =  cell, avg_pi = mean(dist), sd_pi = sd(dist))
 }
