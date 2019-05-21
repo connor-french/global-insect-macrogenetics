@@ -1,4 +1,39 @@
-######
+###### Plot sequence
+library(data.table)
+library(tidyverse)
+library(tidylog)
+#library(furrr)
+library(leaflet)
+library(sf)
+library(raster)
+library(ape)
+library(gdata)
+library(entropy)
+
+#function to pad the ends of shorter sequences with "N"s so all sequences are the same length for alignments
+source("R/pad_short_seqs_function.R") #pad short sequences with Ns
+source("R/fasta_write_function.R") #write fasta files 
+source("R/calc_gen_dist.R") #align seqs and calculate mean pi per species per cell
+source("R/hill_num_calc.R") #calculate hill number of pi. Note* using clustal omega in the ape R package requires having a copy of clustal omega downloaded and accessible either through their PATH or have it indicated in the clustalomega() argument.
+source("R/pi_summary_function.R")
+source("R/sumstat_plot_function.R")
+
+#read in sequence statistics dataframe. replace path if you're conducting this analysis on a different day than the first two steps
+pi_df_file <- paste0("output_", Sys.Date(), "/pi_df_one_", Sys.Date(), ".csv")
+pi_df_one <- fread(pi_df_file)
+
+#read in test_nuc dataframe.
+test_nuc_path <- paste0("output_", Sys.Date(), "/test_nuc_", Sys.Date(), ".csv")
+test_nuc <- fread(test_nuc_path)
+
+#read in environmental data for plotting
+envs <- raster::getData(name = "worldclim", var = "bio", res = 10)
+
+#read in bioclim rasters, downscale the resolution to 1 degree, and crop them
+sa_clim_1d <- envs %>% #stack(f) %>% 
+  #  crop(bounds) %>% 
+  aggregate(fact = 6)
+
 
 #plot density plots of avg pi and sd pi
 avg_pi_density <- pi_df_one %>% 
@@ -22,7 +57,7 @@ d_plot_grob <- list(avg_pi_density, sd_pi_density) %>% lapply(ggplotGrob)
 ggsave(paste0("plots_", Sys.Date(), "/pi_density_plots_", Sys.Date(), ".pdf"), gridExtra::marrangeGrob(grobs = d_plot_grob, nrow = 2, ncol = 1))
 
 #replicate the sampling 1000 times. 
-sum_list<- replicate(1000, pi_summary_fun(pi_df_one, 10), simplify = FALSE) 
+sum_list <- replicate(1000, pi_summary_fun(pi_df_one, 10), simplify = FALSE) 
 
 #summarise these samples into a final df
 sum_df <- bind_rows(sum_list) %>%

@@ -13,7 +13,7 @@
 library(data.table)
 library(tidyverse)
 library(tidylog)
-library(furrr)
+#library(furrr)
 library(leaflet)
 library(sf)
 library(raster)
@@ -23,8 +23,8 @@ library(entropy)
 
 #function to pad the ends of shorter sequences with "N"s so all sequences are the same length for alignments
 source("R/pad_short_seqs_function.R") #pad short sequences with Ns
-source("R/nexus_write_function.R") #write nexus files 
-source("R/align_calc_gen_dist.R") #align seqs and calculate mean pi per species per cell
+source("R/fasta_write_function.R") #write fasta files 
+source("R/calc_gen_dist.R") #align seqs and calculate mean pi per species per cell
 source("R/hill_num_calc.R") #calculate hill number of pi. Note* using clustal omega in the ape R package requires having a copy of clustal omega downloaded and accessible either through their PATH or have it indicated in the clustalomega() argument.
 source("R/pi_summary_function.R")
 source("R/sumstat_plot_function.R")
@@ -39,7 +39,7 @@ dir.create(paste0("rasters_", Sys.Date()))
 
 
 #read in data and remove any row that contains NA values for latitude, longitude, and bin. Only reading in the first 20000 rows for debugging purposes
-bold.data <- fread("../bold_data_insects.txt", na.strings = c("","NA"),  quote = "", verbose = TRUE) %>% 
+bold.data <- fread("../bold_data_insects.txt", nrows = 20000, na.strings = c("","NA"),  quote = "", verbose = TRUE) %>% 
   filter_at(vars(lat, lon, bin_uri), all_vars(!is.na(.))) 
 
 print("Read in data")
@@ -56,8 +56,9 @@ coord_points <- st_as_sf(bold.data, coords = c("lon", "lat"),
 #Reading in an environmental raster (world clim 2.0 bio1 raster) at 10 arc-minute resolution to use as a raster that utilizes lat-long coordinates for its cells. The raster isn't what's important, what is important is the raster resolution. 
 f <- list.files("../wc2.0_10m_bio/", full.names = TRUE) #raster location
 
+envs <- raster::getData(name = "worldclim", var = "bio", res = 10)
 
-sa_clim_1d <- stack(f) %>% #read in bioclim rasters, downscale the resolution to 1 degree, and crop them
+sa_clim_1d <- envs %>% #stack(f) %>% #read in bioclim rasters, downscale the resolution to 1 degree, and crop them
   #  crop(bounds) %>% 
   aggregate(fact = 6) 
 
@@ -87,11 +88,10 @@ ggsave(filename = paste0("plots_", Sys.Date(), "/unfiltered_species_counts_per_c
 
 coordinates(pts_ext_1d) <- ~Long+Lat #convert to a spatial data frame
 
-
-count_pts_1d <- rasterize(pts_ext_1d, sa_clim_1d, fun = "count", field = "bin_uri") #make a raster out of the counts of observations per cell
+#make a raster out of the counts of observations per cell
+count_pts_1d <- rasterize(pts_ext_1d, sa_clim_1d, fun = "count", field = "bin_uri") 
 
 pal.vert <- colorBin(palette = "inferno", bins = 10, domain = NULL, pretty = TRUE, na.color = "#00000000")
-
 
 #plot count map
 all_plot <- leaflet(data = sa_clim_1d) %>% 
@@ -106,7 +106,7 @@ mapview::mapshot(all_plot, selfcontained = FALSE, url = paste0(getwd(), "/plots_
 
 #' 
 #' 
-#' Write the sequence data in the BOLD csv to nexus files. Writing nexus files for species where there are at least three observations and occupy cells where there are more than nine species per cell.  Each nexus file is labeled as "speciesname.cell.nex".
+#' Write the sequence data in the BOLD csv to fasta files. Writing fasta files for species where there are at least three observations and occupy cells where there are more than nine species per cell.  Each fasta file is labeled as "speciesname.cell.nex".
 ## ------------------------------------------------------------------------
 #####filter data for the ideal number of individuals and species per cell
 test_nuc <- pts_ext_1d %>% 
@@ -123,7 +123,7 @@ test_nuc <- pts_ext_1d %>%
   ungroup() %>%
   drop.levels()
 
-#density plot of number of species per cell
+###density plot of number of species per cell
 count_density_sp <- test_nuc %>% 
   group_by(cells) %>% 
   count() %>% 
@@ -143,7 +143,7 @@ count_pts_1d_sp <- rasterize(test_nuc, sa_clim_1d, fun = function(x, ...) {lengt
 
 pal.species <- colorBin(palette = "inferno", bins = 10, domain = NULL, pretty = TRUE, na.color = "#00000000")
 
-#plot count map
+###plot count map
 filter_count_map <- leaflet(data = sa_clim_1d) %>% 
   addTiles() %>%
   addRasterImage(count_pts_1d_sp, colors = pal.species,  opacity = 0.8) %>%
@@ -155,54 +155,28 @@ writeRaster(count_pts_1d_sp, filename = paste0("rasters_", Sys.Date(), "/filter_
 #write to plots folder
 mapview::mapshot(filter_count_map, selfcontained = FALSE, url = paste0(getwd(), "/plots_", Sys.Date(), "/filter_species_count_", Sys.Date(), ".html"))
 
+###barplot of the top 20 counts of number of individuals per species per cell. I'm trying to see if there are any species that have an insane number of individuals per cell for a particular cell.
+count_ind <- test_nuc %>% 
+  group_by(bin_uri, cells) %>% 
+  count(sort = TRUE) %>% 
+  mutate(bin_cells = str_c(bin_uri, cells, sep = "_")) %>%
+  mutate(bin_cells = str_remove_all(bin_cells, "BOLD:")) %>% 
+  ungroup() %>% 
+  top_n(20) %>% 
+  mutate(bin_cells = fct_reorder(bin_cells, n)) %>% 
+  ggplot(aes(x = bin_cells, y = n)) +
+  geom_col() +
+  labs(x = "Species bin_Cell number", y = "N") +
+  coord_flip() +
+  theme_minimal()
+
+ggsave(filename = paste0("plots_", Sys.Date(), "/top_20_sp_counts_", Sys.Date(), ".pdf"), count_ind)
+
+
 print("Filtered sequence data")
 
 #write to output folder
-fwrite(test_nuc, file = paste0("output_", Sys.Date(), "/test_nuc_", Sys.Date(), ".csv"))
-#test_nuc <- fread("bold-seqs-insects-10.txt")
-
-
-#split data frame by cell number and species
 test_nuc <- as.data.frame(test_nuc)
-species_seq_split_one <- test_nuc %>%
-  as.data.frame() %>% #some functions don't like spatial data frames
-  drop.levels() %>%
-  split(.$cells) %>% #split into a list of data frames, grouped by cell. Splitting by both cells and species at once doesn't work.
-  lapply(drop.levels) %>% #drop any levels in the data frame. Have to perform first because extra factor levels can mess up the split function
-  lapply(function(x){
-    split(x, x$bin_uri)}) %>% #split each cell by species
-  drop.levels()
+fwrite(test_nuc, file = paste0("output_", Sys.Date(), "/test_nuc_", Sys.Date(), ".csv"))
 
-#create directory to put nexus files
-nexus_folder <- paste0("output_", Sys.Date(), "/bold_seqs_", Sys.Date())
-dir.create(nexus_folder)
-
-#write nexus files to output folder
-nexus_write_fun(species_seq_split_one, out_folder = nexus_folder)
-
-print("Wrote nexus files")
-
-#' 
-#' 
-#' Calculate genetic diversity statistics for each cell. I had to manually edit several nexus files due to some sequences denoting gaps with spaces and some using dashes.
-## ------------------------------------------------------------------------
-#get a list of the nexus files
-files <- list.files(nexus_folder, full.names = TRUE)
-
-#split into sublists because the computer gets gassed
-files <- split(files, cut(seq_along(files), 5, labels = FALSE))
-
-print("Listed nexus files")
-
-#only run if I need to re-calculate pi for everything. Takes forever
-plan(multicore, workers = 8)
-
-for (file in files){
-  #calculate pi statistics for each species within each cell
-  pi_df_one <- file %>% furrr::future_map_dfr(gen_dist_calc) 
-  ###Write this to a csv. Can read in later if you don't want to run all of the stats again.
-  fwrite(pi_df_one, file = paste0("output_", Sys.Date(), "/pi_df_one_", stringr::str_replace(Sys.time(), " ", "_"), ".csv"))
-}
-
-print("Calculated genetic summary statistics")
 
