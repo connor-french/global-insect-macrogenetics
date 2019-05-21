@@ -39,7 +39,7 @@ dir.create(paste0("rasters_", Sys.Date()))
 
 
 #read in data and remove any row that contains NA values for latitude, longitude, and bin. Only reading in the first 20000 rows for debugging purposes
-bold.data <- fread("../bold_data_insects.txt", nrows = 20000, na.strings = c("","NA"),  quote = "", verbose = TRUE) %>% 
+bold.data <- fread("../bold_data_insects.txt", na.strings = c("","NA"),  quote = "", verbose = TRUE) %>% 
   filter_at(vars(lat, lon, bin_uri), all_vars(!is.na(.))) 
 
 print("Read in data")
