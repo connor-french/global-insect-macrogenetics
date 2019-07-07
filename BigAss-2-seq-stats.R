@@ -29,6 +29,13 @@ source("R/hill_num_calc.R") #calculate hill number of pi. Note* using clustal om
 source("R/pi_summary_function.R")
 source("R/sumstat_plot_function.R")
 
+###Specify the results folder
+#if you want to work out of a folder from an earlier date, replace this string with the date
+todays_date <- Sys.Date()
+
+#folder for the entire project's output to go into
+todays_results <- paste0("results_", todays_date)
+
 ##### Align and calculate summary statistics on the sequences.
 
 #read in the test nuc data set. If you're redoing this after filtering the data on a different day, replace the path with the correct test_nuc_*.csv path
@@ -65,10 +72,24 @@ print("Wrote fasta files")
 aligned_folder <- paste0("output_", Sys.Date(), "/bold_seqs_aligned_", Sys.Date())
 dir.create(aligned_folder)
 
+#split list into chunks for my janky "parallelization" (clustalo's threads option won't work on the lab computer)
+fasta_split <- split(list.files(fasta_folder), ceiling(seq_along(list.files(fasta_folder))/10))
+
+
+
+
+#######WORK ON THIS LATER########
 #align the fastas. Assumes that clustalo is in your path! if not, provide with the path in the argument
-for(i in list.files(fasta_folder)) {
-  system2("clustalo", args =  c(paste0("-i ", fasta_folder, "/", i), paste0("-o ", aligned_folder, "/", i)))
-}
+#choose your number of threads
+
+callr::r(
+  map(fasta_split[[1]], 
+             function(x) 
+               system2("clustalo", args =  c(paste0("-i ", fasta_folder, "/", x), paste0("-o ", aligned_folder, "/", x)))
+             )
+         )
+
+
 
 #remove the folder with unaligned sequences
 unlink(fasta_folder, recursive = TRUE)
