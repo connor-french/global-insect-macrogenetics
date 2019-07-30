@@ -29,17 +29,33 @@ source("R/hill_num_calc.R") #calculate hill number of pi. Note* using clustal om
 source("R/pi_summary_function.R")
 source("R/sumstat_plot_function.R")
 
-###Specify the results folder
+#### Make output folders ----
+#will throw warnings if you're completing steps 1 and 2 on the same day. You can ignore these.
+
 #if you want to work out of a folder from an earlier date, replace this string with the date
 todays_date <- Sys.Date()
 
 #folder for the entire project's output to go into
 todays_results <- paste0("results_", todays_date)
+dir.create(todays_results)
 
+#output folder for spreadsheets, tables, etc.
+output <- paste0(todays_results, "/output")
+dir.create(output)
+
+#folder for plots
+plots <- paste0(todays_results, "/plots")
+#make plots folder
+dir.create(plots)
+
+#folder for rasters
+rasters <- paste0(todays_results, "/rasters")
+#make raster folder
+dir.create(rasters)
 ##### Align and calculate summary statistics on the sequences.
 
 #read in the test nuc data set. If you're redoing this after filtering the data on a different day, replace the path with the correct test_nuc_*.csv path
-test_nuc_path <- paste0("output_", Sys.Date(), "/test_nuc_", Sys.Date(), ".csv")
+test_nuc_path <- paste0(todays_results,"/output/test_nuc.csv")
 test_nuc <- fread(test_nuc_path)
 
 
@@ -54,7 +70,7 @@ species_seq_split_one <- test_nuc %>%
   drop.levels()
 
 #create directory to put fasta files
-fasta_folder <- paste0("output_", Sys.Date(), "/bold_seqs_", Sys.Date())
+fasta_folder <- paste0(todays_results, "/output/bold_seqs")
 dir.create(fasta_folder)
 
 #write fasta files to output folder
@@ -69,37 +85,31 @@ print("Wrote fasta files")
 
 #define output folder
 #create directory to put fasta files
-aligned_folder <- paste0("output_", Sys.Date(), "/bold_seqs_aligned_", Sys.Date())
+aligned_folder <- paste0(todays_results, "/output/bold_seqs_aligned")
 dir.create(aligned_folder)
 
 #split list into chunks for my janky "parallelization" (clustalo's threads option won't work on the lab computer)
-fasta_split <- split(list.files(fasta_folder), ceiling(seq_along(list.files(fasta_folder))/10))
+#fasta_split <- split(list.files(fasta_folder), ceiling(seq_along(list.files(fasta_folder))/10))
+fasta_files <- list.files(fasta_folder)
 
-
-
-
-#######WORK ON THIS LATER########
 #align the fastas. Assumes that clustalo is in your path! if not, provide with the path in the argument
 #choose your number of threads
 
-callr::r(
-  map(fasta_split[[1]], 
-             function(x) 
-               system2("clustalo", args =  c(paste0("-i ", fasta_folder, "/", x), paste0("-o ", aligned_folder, "/", x)))
-             )
-         )
-
-
+map(fasta_files, 
+    ~ system2("clustalo", 
+            args =  c(paste0("-i ", getwd(), "/", fasta_folder, "/", .), paste0("-o ", getwd(), "/", aligned_folder, "/", .))
+    )
+)
 
 #remove the folder with unaligned sequences
 unlink(fasta_folder, recursive = TRUE)
 
 #calculate genetic summary stats
 #calculate pi statistics for each species within each cell
-pi_df_one <- list.files(aligned_folder, full.names = TRUE) %>% map_dfr(gen_dist_calc) 
+pi_df_one <- list.files(aligned_folder, full.names = TRUE) %>% 
+  map_dfr(gen_dist_calc) 
 ###Write this to a csv. Can read in later if you don't want to run all of the stats again.
-fwrite(pi_df_one, file = paste0("output_", Sys.Date(), "/pi_df_one_", Sys.Date(), ".csv"))
+fwrite(pi_df_one, file = paste0(todays_results, "/output/pi_df_one.csv"))
 
-
-print("Calculated sequence statistics")
+print("Calculated pi and sequence statistics")
 

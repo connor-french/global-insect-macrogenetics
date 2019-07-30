@@ -1,0 +1,4 @@
+OUTPATH="home/output/"
+for file in *; do
+clustalo -i $file --threads=4 -o $OUTPATH$file
+done
