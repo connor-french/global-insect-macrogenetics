@@ -79,7 +79,7 @@ fasta_write_fun(species_seq_split_one, out_folder = fasta_folder)
 print("Wrote fasta files")
 
 #' 
-#' 
+#' Align sequences. This takes forever on a single core! Try to parallelize it if you can. I  
 #' Calculate genetic diversity statistics for each cell. 
 ## ------------------------------------------------------------------------
 
@@ -91,6 +91,7 @@ dir.create(aligned_folder)
 #split list into chunks for my janky "parallelization" (clustalo's threads option won't work on the lab computer)
 #fasta_split <- split(list.files(fasta_folder), ceiling(seq_along(list.files(fasta_folder))/10))
 fasta_files <- list.files(fasta_folder)
+
 
 #align the fastas. Assumes that clustalo is in your path! if not, provide with the path in the argument
 #choose your number of threads

@@ -18,56 +18,6 @@ source("R/calc_gen_dist.R") #align seqs and calculate mean pi per species per ce
 source("R/hill_num_calc.R") #calculate hill number of pi. Note* using clustal omega in the ape R package requires having a copy of clustal omega downloaded and accessible either through their PATH or have it indicated in the clustalomega() argument.
 source("R/pi_summary_function.R")
 source("R/sumstat_plot_function.R")
-source("R/equal_area_resampling.R")
-
-###Specify the results folder
-#folder for the entire project's output to go into
-#Don't include a backslash
-todays_results <- ""
-
-#output folder
-output <- paste0(todays_results, "/output")
-
-#plots folder
-plots <- paste0(todays_results, "/plots")
-
-#rasters
-rasters <- paste0(todays_results, "/rasters")
-
-###Begin summary stats
-#read in sequence statistics dataframe. replace path if you're conducting this analysis on a different day than the first two steps
-pi_df_file <- "/Users/connorfrench/Dropbox/Old_Mac/School_Stuff/CUNY/BigAss-bird-phylogeography/BigAss-phylogeography/pi_df_one_100.csv"
-pi_df_one <- fread(pi_df_file) %>% 
-  as_tibble() %>% 
-  mutate(cells = cell)
-
-#some cells have a bunch of species. 20565 is over Costa Rica, which contains a ton of butterflies from Janzen
-pi_df_one %>% 
-  group_by(cells) %>% 
-  count(sort = TRUE)
-
-#read in test_nuc dataframe.
-test_nuc_path <- paste0("test_nuc_2019-05-21.csv")
-test_nuc <- fread(test_nuc_path)
-
-### read in environmental data for plotting
-#We have three different data sets: 19 CHELSA bioclims (chelsa), 3 DHI variables (dhi), and global habitat heterogeneity (ghh) from Tuanmu and Jetz 2015
-chelsa_dir <- "../chelsa_10min/10min"
-dhi_file <- "../ndvi_dhi_combined-v6/ndvi_dhi_combo_small.tif" #only one file, so don't need to list contents
-ghh_dir <- "../global_habitat_heterogeneity"
-
-chelsa_files <- list.files(chelsa_dir, pattern = ".tif$", full.names = TRUE)
-ghh_files <- list.files(ghh_dir, pattern = ".tif$", full.names = TRUE)
-
-chelsa <- stack(chelsa_files)
-dhi <- stack(dhi_file)
-ghh <- stack(ghh_files)
-
-### aggregate to equal area projection at chosen resolution
-chelsa_agg <- resample_equal_area(chelsa, km = 100)
-dhi_agg <- resample_equal_area(dhi, km = 100)
-ghh_agg <- resample(ghh, km = 100)
-
 
 ### combine into a single raster stack
 clim <- stack(chelsa_agg, dhi_agg, ghh_agg)
@@ -137,7 +87,7 @@ sum_df_latlongs <- test_nuc %>%
   dplyr::select(cells, latitude = Lat, longitude = Long) %>% 
   right_join(sum_df, by = "cells") %>% 
   filter(mean.pi.avg < 0.05) #%>% #remove species-level divergence
-  
+
 
 sum_df_latlongs %>% 
   #filter(mean.pi.skew < .015) %>% 
@@ -190,10 +140,8 @@ for(stat in gen_sum_vec){
   #write to plots folder
   mapview::mapshot(l, selfcontained = FALSE, url = paste0(getwd(), "/rasters_", Sys.Date(), "/", str_replace_all(stat, "\\.", "_"), "_", Sys.Date(), ".html"))
 }
- 
+
 
 #' 
 #' 
 
-
-summary(lm(sum_df_processed$hill.one.avg~sum_df_processed$bio2))
