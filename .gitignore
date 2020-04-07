@@ -39,4 +39,4 @@ vignettes/*.pdf
 .Rproj.user
 
 # big data file
-data/*.zip
+data/bold_data_insects.txt.zip
