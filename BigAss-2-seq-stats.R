@@ -11,8 +11,6 @@
 #' Load packages, read in data, and filter for NAs
 ## ----include = FALSE-----------------------------------------------------
 library(data.table)
-library(tidyverse)
-library(tidylog)
 #library(furrr)
 library(leaflet)
 library(sf)
@@ -20,6 +18,9 @@ library(raster)
 library(ape)
 library(gdata)
 library(entropy)
+library(here)
+library(tidyverse)
+
 
 #function to pad the ends of shorter sequences with "N"s so all sequences are the same length for alignments
 source("R/pad_short_seqs_function.R") #pad short sequences with Ns

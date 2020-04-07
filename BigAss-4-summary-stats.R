@@ -1,5 +1,4 @@
 ###### Plot sequences
-library(tidyverse)
 #library(furrr)
 library(leaflet)
 library(sf)
@@ -8,6 +7,8 @@ library(ape)
 library(gdata)
 library(entropy)
 library(moments)
+library(here)
+library(tidyverse)
 
 #function to pad the ends of shorter sequences with "N"s so all sequences are the same length for alignments
 source("R/pad_short_seqs_function.R") #pad short sequences with Ns
@@ -87,7 +88,7 @@ sum_df <- read_csv("data/genetics/sum_df_100.csv")
 sum_df_latlongs <- test_nuc %>% 
   as_tibble() %>% 
   dplyr::filter(!duplicated(cell)) %>% 
-  dplyr::select(cell, latitude = Lat, longitude = Long) %>% 
+  dplyr::select(cell, latitude = latitude, longitude = longitude) %>% 
   right_join(sum_df, by = "cell") 
 
 

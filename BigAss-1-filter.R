@@ -11,8 +11,6 @@
 #' Load packages, read in data, and filter for NAs
 ## ----include = FALSE-----------------------------------------------------
 library(data.table)
-library(tidyverse)
-library(tidylog)
 #library(furrr)
 library(leaflet)
 library(sf)
@@ -22,12 +20,13 @@ library(gdata)
 library(entropy)
 library(ggspatial)
 library(rnaturalearth)
+library(here)
+library(tidyverse)
 
-#function to pad the ends of shorter sequences with "N"s so all sequences are the same length for alignments
-source("R/pad_short_seqs_function.R") #pad short sequences with Ns
-source("R/fasta_write_function.R") #write fasta files 
-source("R/calc_gen_dist.R") #align seqs and calculate mean pi per species per cell
-source("R/hill_num_calc.R") #calculate hill number of pi. Note* using clustal omega in the ape R package requires having a copy of clustal omega downloaded and accessible either through their PATH or have it indicated in the clustalomega() argument.
+source("R/pad_short_seqs_function.R") # pad the ends of shorter sequences with "N"s so all sequences are the same length for alignments
+source("R/fasta_write_function.R") # write fasta files 
+source("R/calc_gen_dist.R") # align seqs and calculate mean pi per species per cell
+source("R/hill_num_calc.R") # calculate hill number of pi. Note* using clustal omega in the ape R package requires having a copy of clustal omega downloaded and accessible either through their PATH or have it indicated in the clustalomega() argument.
 source("R/pi_summary_function.R")
 source("R/sumstat_plot_function.R")
 source("R/equal_area_resampling.R")
@@ -38,7 +37,16 @@ theme_set(theme_minimal())
 
 #### Make output folders ----
 
-#if you want to work out of a folder from an earlier date, replace this string with the date
+# function to check if subfolder exists. If not, make it
+create_dir <- function(out_path) {
+  if (!dir.exists(out_path)) {
+    dir.create(out_path)
+  } else
+    print("Directory already there.")
+}
+
+
+# to separate results by when they were ran
 todays_date <- Sys.Date()
 
 #folder for the entire project's output to go into
@@ -60,45 +68,62 @@ rasters <- paste0(todays_results, "/rasters")
 dir.create(rasters)
 
 
-###Start filtering
-#read in data and remove any row that contains NA values for latitude, longitude, and bin. 
-bold_data <- fread("../bold_data_insects.txt", na.strings = c("","NA"),  quote = "") %>% 
-  filter_at(vars(lat, lon, bin_uri), all_vars(!is.na(.))) 
+### Start filtering -----
+# read in data and remove any row that contains NA values for latitude, longitude, and bin. 
+# since this data is too large to put in a github repository, you have to download it and hard code the path
+bold_data <-
+  fread("../bold_data_insects.txt",
+        na.strings = c("", "NA"),
+        quote = "") %>%
+  filter_at(vars(lat, lon, bin_uri), all_vars(!is.na(.)))
 
 print("Read in data")
 
-#convert to sf object for plotting and project to behrmann equal area crs
+# convert to sf object for plotting and project to behrmann equal area crs
 behrmann_crs <- "+proj=cea +lon_0=0 +lat_ts=30 +x_0=0 +y_0=0 +datum=WGS84 +ellps=WGS84 +units=m +no_defs"
-coord_points <- st_as_sf(bold_data, coords = c("lon", "lat"), 
+bold_data_sf <- st_as_sf(bold_data, coords = c("lon", "lat"), 
                          crs = 4326, agr = "constant") %>% 
   st_transform(crs = behrmann_crs)
 
 #' 
 #' 
 #' Make a raster of the number of individuals per cell we've obtained after filtering for at least three individuals per species per cell and plot. The outlier individuals get filtered out at the next filtering step.
-## ------------------------------------------------------------------------
+## 
 
-###read in environmental raster. I have to hard code this because I can't host them on the github and they need to be downloaded
-f <- raster("/Users/connorfrench/Dropbox/Old_Mac/climate-data/chelsa_10min/10min/bio_1.tif")
+### Read in generic raster at specified resolution (I'm using the chelsa climate data I've previously aggregrated and is available if you've run this script previously)
+## If there are no climate files at the desired resolution, pick a different resolution climate file and resample it. This can take a while.
+# The res argument needs an integer and clim_file needs a path string (if you don't already have an aggregated raster)
+read_agg_raster <- function(res = 100, clim_file = NULL) {
+  agg_file <- here("data", "climate", paste0("rasters_", res, "km"), paste0("chelsa_", res, "km.tif"))
+  if(file.exists(agg_file)) {
+    agg_rast <- stack(agg_file)[[1]]
+    } else  {
+    print("You need a raster to aggregate. Supply a raster path to the 'clim_file' argument and procede.")
+    if(!is.null(clim_file)) {
+      f <- raster(clim_file)
+      agg_rast <- f %>% 
+        resample_equal_area(km = res)
+      }
+    }
+}
 
-#resample the env't to 100 km cells. 
-sa_clim_1d <- f %>% 
-  resample_equal_area(km = 100)
+# resample the env't to specified resolution cells. 
+agg_rast <- read_agg_raster(res = 100)
 
-print("Read in climate data")
+print("Raster aggregated successfully")
 
-#get the cell number of each coordinate pair for filtering.
-pts_ext_1d <- raster::extract(sa_clim_1d, coord_points, fun = "count", sp = TRUE, cellnumbers = TRUE) %>% 
-  as.data.frame() %>%
-  setnames(old = c("coords.x1", "coords.x2"), new = c("Long", "Lat")) %>% #rename coordinates 
-  mutate(cells = as.factor(cells)) %>% #need cells numbers as factors so I can count their frequency
-  group_by(bin_uri, cells) %>% #group the data set by species, then by cell number
-  filter(n() > 2) %>% #retain only observations where there are more than two species observations per cell
+# get the cell number of each coordinate pair for filtering.
+pts_ext_1d <- raster::extract(agg_rast, bold_data_sf, fun = "count", sp = TRUE, cellnumbers = TRUE) %>% 
+  as_tibble() %>%
+  setnames(old = c("coords.x1", "coords.x2"), new = c("longitude", "latitude")) %>% # rename coordinates 
+  mutate(cells = as.factor(cells)) %>% # need cells numbers as factors so I can count their frequency
+  group_by(bin_uri, cells) %>% # group the data set by species, then by cell number
+  filter(n() > 2) %>% # retain only observations where there are more than two species observations per cell
   ungroup() %>%
   drop.levels()
 
 ### Num of individual plots, unfiltered dataset ----
-#histogram of number of individuals per cell
+# histogram of number of individuals per cell
 count_histogram <- pts_ext_1d %>% 
   as.data.frame(xy = TRUE) %>% 
   group_by(cells) %>% 
@@ -110,13 +135,13 @@ count_histogram <- pts_ext_1d %>%
 ggsave(filename = paste0(todays_results,"/plots/unfiltered_species_counts_per_cell.pdf"), 
        count_histogram)
 
-#convert to a spatial data frame
-coordinates(pts_ext_1d) <- ~Long+Lat 
+# convert to a spatial data frame
+coordinates(pts_ext_1d) <- ~longitude+latitude 
 
 
 #make a raster out of the counts of observations per cell
 count_pts_1d <- rasterize(pts_ext_1d,
-                          sa_clim_1d,
+                          agg_rast,
                           fun = "count",
                           field = "bin_uri")
 
@@ -166,7 +191,7 @@ ggsave(
 test_nuc <- pts_ext_1d %>%
   raster::as.data.frame(xy = TRUE) %>%
   distinct(recordID, .keep_all = TRUE) %>% #only retain unique individuals
-  filter_at(vars(recordID, bin_uri, cells, markercode, nucleotides, Lat, Long),
+  filter_at(vars(recordID, bin_uri, cells, markercode, nucleotides, latitude, longitude),
             all_vars(!is.na(.))) %>%
   group_by(bin_uri, cells) %>% #group the data set by species, then by cell number
   filter(str_detect(markercode, "COI"),
@@ -242,10 +267,10 @@ ggsave(
 )
 
 #convert to a spatial data frame
-coordinates(test_nuc) <- ~Long+Lat 
+coordinates(test_nuc) <- ~longitude+latitude 
 
 #make a raster out of the counts of species per cell
-count_pts_1d_sp <- rasterize(test_nuc, sa_clim_1d, fun = function(x, ...) {length(unique(x))}, field = "bin_uri") 
+count_pts_1d_sp <- rasterize(test_nuc, agg_rast, fun = function(x, ...) {length(unique(x))}, field = "bin_uri") 
 
 
 ###make a ggplot of the map
