@@ -1,109 +1,309 @@
-##### MARS Modeling
+##### Predictive modeling interactive script
+##### This is an interactive script. 
 library(raster)
-library(tidymodels)
 library(tidyverse)
 library(earth)
+library(caret)
 library(pdp)
+library(corrr)
+### Helper functions
 
-###Specify the results folder
-#if you want to work out of a folder from an earlier date, replace this string with the date
-todays_date <- Sys.Date()
-
-#folder for the entire project's output to go into
-todays_results <- paste0("results_", todays_date)
-
-###Start modeling
-#read in genetic data
-sum_df <- read_csv("sum_df_2019-06-14.csv")
-
-###read in environmental rasters. I have to hard code this because I can't host them on the github and they need to be downloaded
-raster_folder <-"/Users/connorfrench/Dropbox/Old_Mac/climate-data/chelsa_10min/10min" 
-
-#list all of the tif rasters
-f <- list.files(raster_folder, 
-                pattern = "tif$",
-                full.names = TRUE)
-
-#read in the files as a stack
-envs <- stack(f)
-
-#resample the env't to 100 km cells. This takes a while for global datasets
-sa_clim_1d <- envs %>% 
-  resample_equal_area(km = 100)
-
-envs <- stack("/Users/connorfrench/Dropbox/Old_Mac/School_Stuff/CUNY/BigAss-bird-phylogeography/ndvi_dhi_combined-v6/ndvi_dhi_combo_downscaled_1-degree.tif") %>% 
-  stack(envs)
-
-
-
-#extract environmental data for modeling
-coordinates(sum_df) <- ~longitude+latitude
-env_data <- raster::extract(envs, sum_df) %>% 
-  as_tibble()
-
-sum_df_combo <- sum_df %>% 
-  as.data.frame(xy = TRUE) %>% 
-  as_tibble() %>% 
-  bind_cols(env_data) %>% 
-  filter(median.pi.avg < 0.05, mean.pi.avg < 0.05, longitude < 0) %>% 
-  rename(dhi_1 = ndvi_dhi_combo_downscaled_1.degree.1,
-         dhi_2 = ndvi_dhi_combo_downscaled_1.degree.2,
-         dhi_3 = ndvi_dhi_combo_downscaled_1.degree.3) %>% 
-  drop_na()
+# extract environment for lat-longs and add to genetics df
+extract_env <- function(env_raster_dir, gen_data_path) {
+  gen_data <- readr::read_csv(gen_data_path)
+  sp::coordinates(gen_data) <- ~longitude+latitude
   
-
-#set up recipe
-model_recipe <- recipe(hill.one.avg ~ 
-                         latitude + 
-                         longitude + 
-                         bio1 + 
-                         bio2 + 
-                         bio3 + 
-                         bio4 + 
-                         bio5 + 
-                         bio6 + 
-                         bio7 +
-                         bio8 +
-                         bio9 +
-                         bio10 +
-                         bio11 +
-                         bio12 +
-                         bio13 +
-                         bio14 +
-                         bio15 +
-                         bio16 +
-                         bio17 +
-                         bio18 +
-                         bio19 +
-                         dhi_1 +
-                         dhi_2 +
-                         dhi_3, 
-                       data = sum_df_combo
-                       ) 
+  env_stack <- list.files(env_raster_dir, pattern = ".tif$", full.names = TRUE) %>% 
+    raster::stack()
   
+  env_data <- raster::extract(env_stack, gen_data) %>% 
+    tibble::as_tibble()
+  
+  all_data <- gen_data %>% 
+    raster::as.data.frame(xy = TRUE) %>% 
+    tibble::as_tibble() %>% 
+    dplyr::bind_cols(env_data)
+  
+  return(all_data)
+}
 
-#prepare the recipe so it can be applied to other data sets (usually do this with training data that is going to be applied to other testing sets) 
-#since we're just doing the training and validation steps (no testing) and aren't transforming the variables at all, this doesn't really matter, but I'm doing it for good practice
-prepped_recipe <- prep(model_recipe, sum_df_combo)
 
-#apply the recipe to a data set to create a design matrix
-sum_df_processed <- bake(prepped_recipe, sum_df_combo)
+#### repeat the process for all resolutions of climate data (100 km, 200 km, 300 km)
+full_df <- extract_env(env_raster_dir = "data/climate/rasters_100km",
+                       gen_data_path = "data/genetics/sum_df_100.csv")
 
-#create a feature plot to visualize relationships between variables
-caret::featurePlot(select(sum_df_processed, latitude, longitude, starts_with("bio"), contains("dhi")), sum_df_processed$hill.one.avg)
+# change the filename for each resolution
+write_csv(full_df, "data/genetics/full_df_100.csv")
+ 
+# read in full df if you've already extracted the environment values
+full_df <- read_csv("data/genetics/full_df_100.csv")
+
+#### create feature plots to visualize relationships between variables
+#### have to do one for each data set or the plot gets way too busy
+
+# chelsa current
+caret::featurePlot(dplyr::select(full_df, 
+                          latitude, 
+                          longitude, 
+                          starts_with("chelsa")), 
+                   full_df$hill.three.avg)
+
+# dhi
+caret::featurePlot(dplyr::select(full_df, 
+                                 starts_with("dhi")), 
+                   full_df$hill.one.avg)
+
+# heterogeneity
+caret::featurePlot(dplyr::select(full_df, 
+                                 starts_with("hetero")), 
+                   full_df$hill.one.avg)
+
+# late Holocene
+caret::featurePlot(dplyr::select(full_df, 
+                                 starts_with("pc_2")), 
+                   full_df$hill.one.avg)
+
+# mid Holocene
+caret::featurePlot(dplyr::select(full_df, 
+                                 starts_with("pc_3")), 
+                   full_df$hill.one.avg)
+
+# younger dryas stadial
+caret::featurePlot(dplyr::select(full_df, 
+                                 starts_with("pc_4")), 
+                   full_df$hill.one.avg)
+
+# bolling-allerod
+caret::featurePlot(dplyr::select(full_df, 
+                                 starts_with("pc_5")), 
+                   full_df$hill.one.avg)
+
+# heinrich stadial
+caret::featurePlot(dplyr::select(full_df, 
+                                 starts_with("pc_6")), 
+                   full_df$hill.one.avg)
+
+# last glacial maximum
+caret::featurePlot(dplyr::select(full_df, 
+                                 starts_with("pc_7")), 
+                   full_df$hill.one.avg)
+
+# soil
+caret::featurePlot(dplyr::select(full_df, 
+                                 starts_with("soil")), 
+                   full_df$hill.one.avg)
 
 
-#run mars algorithm
-mars_model <- earth(
-  x = select(sum_df_processed, latitude, longitude, starts_with("bio"), contains("dhi")),
-  y = sum_df_processed$hill.one.avg,
-  degree = 1
+responses <- full_df %>%
+  na.omit() %>% 
+  dplyr::select(cell,
+         latitude,
+         longitude,
+         contains("avg"),
+         contains("sd"),
+         contains("skew"))
+
+predictors <- full_df %>% 
+  na.omit() %>% 
+  dplyr::select(
+    starts_with("chelsa"),
+    starts_with("dhi"),
+    starts_with("hetero"),
+    starts_with("pc"),
+    starts_with("soil")
+  )
+
+cor_df <- full_df %>% 
+  na.omit() %>% 
+  correlate(method = "spearman") %>% 
+  stretch()
+
+response_half <- cor_df %>% 
+  na.omit() %>% 
+  filter(
+    r > 0.3,
+    str_detect(x, "cell") |
+    str_detect(x, "latitude") |
+    str_detect(x, "longitude") |
+    str_detect(x, "avg") |
+    str_detect(x, "sd") |
+    str_detect(x, "skew")
+    )
+
+
+
+# none of the genetic response variables have a correlation > 0.3 with a non-genetic variable
+response_half %>% View()
+
+######### Set up models ##########
+
+# we're performing 10-fold cross validation for all models
+ctrl <- trainControl(
+  method = "cv", 
+  number = 10,
+  # Save the assessment predictions from the best model
+  savePredictions = "final",
+  # Log the progress of the tuning process
+  verboseIter = TRUE,
+  # want to use parallelization 
+  allowParallel = TRUE 
 )
 
-plot(mars_model)
+#####################################
+
+### Hill 1 model (use all vars) #####
+
+#####################################
+
+# first hill number analysis
+full_df_hill <- full_df %>%
+  dplyr::select(
+    hill.one.avg,
+    latitude,
+    longitude,
+    starts_with("chelsa"),
+    starts_with("dhi"),
+    starts_with("hetero"),
+    starts_with("pc"),
+    starts_with("soil")
+  ) %>%
+  na.omit()
+
+#### MARS model
+
+# set up tuning grid. We're exploring additive and interaction terms ("degree"), 
+mars_grid <- expand.grid(degree = 1:2, nprune = seq(2, 50, by = 2))
+
+
+mars_model_fun <- function(x) {
+  caret::train(
+    x = predictors,
+    y = responses[[x]],
+    method = "earth",
+    tuneGrid = mars_grid,
+    trControl = ctrl
+  )
+  
+}
+
+for (name in colnames(responses)) {
+  mod <- mars_model_fun(name)
+  save(mod, file = paste0("model_output_11-12/", name, ".rda"))
+}
+
+mars_model <- mod
+
+# average RMSE plot
+ggplot(mars_model) + theme(legend.position = "top")
+
+# obs vs predicted plot
+mars_model_pred <- mars_model$pred
+
+ggplot(mars_model_pred, aes(x = pred, y = obs)) +
+  geom_abline(col = "green", alpha = .5) +
+  geom_hex(alpha = .8) +
+  scale_fill_viridis_c() +
+  geom_smooth(
+    se = FALSE,
+    col = "red",
+    lty = 2,
+    lwd = .25,
+    alpha = .5
+  )
 
 
 
+####### Random forest
+
+# set up tuning grid. We're exploring additive and interaction terms ("degree"), 
+rf_grid <- expand.grid(.mtry = 1:sqrt(ncol(full_df_hill)))
+
+set.seed(8305445)
+rf_model <- caret::train(
+  x = select(full_df_hill, -hill.one.avg),
+  y = full_df_hill$hill.one.avg,
+  method = "rf",
+  tuneGrid = rf_grid,
+  trControl = ctrl,
+  ntree = 1000
+)
+
+rf_model$results
+
+
+
+#####################################
+
+### Avg. pi model (use all vars) #####
+
+#####################################
+
+# first hill number analysis
+full_df_pi <- full_df %>%
+  select(
+    mean.pi.avg,
+    latitude,
+    longitude,
+    starts_with("chelsa"),
+    starts_with("dhi"),
+    starts_with("hetero"),
+    starts_with("pc"),
+    starts_with("soil")
+  ) %>%
+  na.omit()
+
+#### MARS model
+
+# set up tuning grid. We're exploring additive and interaction terms ("degree"), 
+mars_grid <- expand.grid(degree = 1:2, nprune = seq(2, 50, by = 2))
+
+set.seed(3453465)
+mars_model_pi <- caret::train(
+  x = select(full_df_pi, -mean.pi.avg),
+  y = responses,
+  method = "earth",
+  tuneGrid = mars_grid,
+  trControl = ctrl
+)
+
+# average RMSE plot
+ggplot(mars_model_pi) + theme(legend.position = "top")
+
+# obs vs predicted plot
+mars_model_pred_pi <- mars_model_pi$pred
+
+ggplot(mars_model_pred_pi, aes(x = pred, y = obs)) +
+  geom_abline(col = "green", alpha = .5) +
+  geom_point(alpha = .8) +
+  geom_smooth(
+    se = FALSE,
+    col = "red",
+    lty = 2,
+    lwd = .25,
+    alpha = .5
+  ) +
+  xlim(0, 10)
+
+####### Random forest
+
+# set up tuning grid. We're exploring additive and interaction terms ("degree"), 
+set.seed(833472)
+rf_model_pi <- caret::train(
+  x = select(full_df_pi, -mean.pi.avg),
+  y = full_df_pi$mean.pi.avg,
+  method = "rf",
+  tuneGrid = rf_grid,
+  trControl = ctrl,
+  ntree = 1000
+)
+
+rf_model_pi$results
+
+######################################################
+
+################### Extra Plots ######################
+
+######################################################
 var_importance <- tibble(
   variable = dimnames(evimp(mars_model))[[1]],
   num_subsets = c(22, 21, 18, 15, 14, 12, 10, 9, 6, 5)
@@ -129,9 +329,6 @@ var_imp_plot <- var_importance %>%
         axis.text.y = element_text(color = "#333333")
   )
 
-
-
-
 dhi_plot <- ggplot(sum_df_processed, aes(x = dhi_1, y = hill.one.avg)) +
   geom_point(color = "gold") +
   geom_smooth(method = "lm", se = FALSE, color = "purple") +
@@ -156,30 +353,30 @@ model_fit_df <- tibble(
   rsq = c(0.2422463, 0.1824755, 0.5103241, 0.2856198, 0.2800988),
   grsq = c(0.1831, 0.1366418, 0.3169007, 0.2056086, 0.2157808),
   n = c(1321, 893, 301, 620, 574)
-)
-  
+) %>% 
+  pivot_longer(cols = c(rsq, grsq), names_to = "metric", values_to = "value")
+
 model_fit_plot <- model_fit_df %>% 
-  mutate(dataset = fct_reorder(dataset, rsq)) %>% 
-  ggplot(aes(x = dataset, y = rsq)) +
+  mutate(dataset = fct_reorder(dataset, value)) %>% 
+  ggplot(aes(x = dataset, y = value, fill = metric)) +
   labs(x = "", y = "Rsq (GRsq)", title = "Model fit for geographic subsets") +
-  geom_col(fill = "#440154FF") +
-  geom_col(aes(x = dataset, y = grsq), fill = "#20A486FF") +
+  geom_col(position = "dodge") +
+  scale_fill_manual(values = c("#440154FF", "#20A486FF")) +
   coord_flip() +
-  theme(text = element_text(size=35, color = "#333333"),
-        panel.background = element_rect(fill = "transparent", color = "#333333"), # bg of the panel
+  theme(text = element_text(size=20, color = "white"),
+        panel.background = element_rect(fill = "transparent", color = "white"), # bg of the panel
         plot.background = element_rect(fill = "transparent", color = NA), # bg of the plot
         panel.grid.major = element_blank(), # get rid of major grid
-        legend.text=element_text(color = "#333333"),
-        legend.title = element_text(color = "#333333"),
+        legend.text=element_text(color = "white"),
+        legend.title = element_text(color = "white"),
         panel.grid.minor = element_blank(), # get rid of minor grid
         legend.background = element_rect(fill = "transparent"), # get rid of legend bg
         legend.box.background = element_rect(fill = "transparent"), # get rid of legend panel bg)
-        axis.text.x = element_text(color = "#333333"),
-        axis.text.y = element_text(color = "#333333")
+        axis.text.x = element_text(color = "white"),
+        axis.text.y = element_text(color = "white")
   )
 
 
-  
 ggsave(var_imp_plot, 
         filename = "/Users/connorfrench/Dropbox/Old_Mac/School_Stuff/CUNY/Conferences/Evolution-2019/poster/var_imp_plot.png", 
         bg= "transparent",
@@ -194,6 +391,11 @@ ggsave(model_fit_plot,
        filename = "/Users/connorfrench/Dropbox/Old_Mac/School_Stuff/CUNY/Conferences/Evolution-2019/poster/model_fit_plot.png", 
        bg= "transparent",
        device = "png")
+
+
+
+
+
 
 
 

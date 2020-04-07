@@ -79,38 +79,32 @@ fasta_write_fun(species_seq_split_one, out_folder = fasta_folder)
 print("Wrote fasta files")
 
 #' 
-#' Align sequences. This takes forever on a single core! Try to parallelize it if you can. I  
-#' Calculate genetic diversity statistics for each cell. 
-## ------------------------------------------------------------------------
+#' Align sequences. Have to execute this outside of the R environment
+#' This takes way too long to do in R
+#' I couldn't figure out an easy way to parallelize the process, so I came up with an ugly workaround
+#' In the other_scripts folder I have two scripts, split_folders.txt and alignment_bash_script.txt
+#' The split_folders.txt file contains a script to split the unaligned sequences into multiple folders. 
+#' You can adjust the number of folders by changing group_size variable to alter the number of sequence files you want int each folder
+#' If you have many cores to work with, you can split the sequences into many folders
+#' The alignment_bash_script.txt file contains a simple script to align sequences. It assumes you have clustalo in your path, so make sure that is true
+#' 
+#' Complete the following actions on the command line:
+#' 1) navigate to your fasta folder
+#' 2) copy-paste the split_folders.txt contents into your command line environment and execute.
+#' 3) start a screen instance, naming it after a specific folder (e.g. "screen -O dir001")
+#' 4) navigate to a specific subdirectory (dir001, dir002, etc.) and execute the contents of the alignment_bash_script.txt
+#' 5) exit the screen (screen + ctrl  + ctrl D) and repeat steps 3-4 for all subdirectories
+#' After finishing the alignments, return to this R script
 
-#define output folder
-#create directory to put fasta files
-aligned_folder <- paste0(todays_results, "/output/bold_seqs_aligned")
-dir.create(aligned_folder)
 
-#split list into chunks for my janky "parallelization" (clustalo's threads option won't work on the lab computer)
-#fasta_split <- split(list.files(fasta_folder), ceiling(seq_along(list.files(fasta_folder))/10))
-fasta_files <- list.files(fasta_folder)
+# calculate genetic summary stats
+# calculate pi statistics for each species within each cell
+aligned_folder <- "data/bold_seqs_aligned_100"
 
-
-#align the fastas. Assumes that clustalo is in your path! if not, provide with the path in the argument
-#choose your number of threads
-
-map(fasta_files, 
-    ~ system2("clustalo", 
-            args =  c(paste0("-i ", getwd(), "/", fasta_folder, "/", .), paste0("-o ", getwd(), "/", aligned_folder, "/", .))
-    )
-)
-
-#remove the folder with unaligned sequences
-unlink(fasta_folder, recursive = TRUE)
-
-#calculate genetic summary stats
-#calculate pi statistics for each species within each cell
 pi_df_one <- list.files(aligned_folder, full.names = TRUE) %>% 
   map_dfr(gen_dist_calc) 
 ###Write this to a csv. Can read in later if you don't want to run all of the stats again.
-fwrite(pi_df_one, file = paste0(todays_results, "/output/pi_df_one.csv"))
+fwrite(pi_df_one, file = paste0(todays_results, "/output/pi_df_one_100.csv"))
 
 print("Calculated pi and sequence statistics")
 

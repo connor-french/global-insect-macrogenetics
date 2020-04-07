@@ -1,7 +1,5 @@
-###### Plot sequence
-library(data.table)
+###### Plot sequences
 library(tidyverse)
-library(tidylog)
 #library(furrr)
 library(leaflet)
 library(sf)
@@ -19,92 +17,87 @@ source("R/hill_num_calc.R") #calculate hill number of pi. Note* using clustal om
 source("R/pi_summary_function.R")
 source("R/sumstat_plot_function.R")
 
-### combine into a single raster stack
-clim <- stack(chelsa_agg, dhi_agg, ghh_agg)
+read_env <- function(env_data_path) {
+  env_data <- list.files(env_data_path, pattern = ".tif$", full.names = TRUE) %>% 
+    raster::stack()
+  
+  return(env_data)
+}
 
 
+env_data <- read_env("data/climate/rasters_100km")
+
+pi_df_raw <- read_csv("data/genetics/pi_df_one_100.csv")
+
+test_path <- "../results_2019-07-07_100/output/test_nuc.csv"
+test_nuc <- 
+  data.table::fread(test_path)
+data.table::setnames(test_nuc, "cells", "cell")
 # filter sequences based on: 
-# pi (0.05, to make it similar to threshold used for BOLD, with some leeway),
 # number of sequences >= 5 (based on literature recommendations)
-# percent missing < 0.25 (general rule of thumb)
+# percent missing < 0.5 (general rule of thumb)
+# number of BINs >= 10
 
-pi_df_one <- 
-  pi_df_one %>% 
-  filter(avg_pi <= 0.05, num_seqs >= 5, perc_missing < 0.25) %>%
+pi_df <- 
+  pi_df_raw %>% 
+  filter(num_seqs >= 5, perc_missing < 0.5) %>% 
   group_by(cell) %>% 
   filter(n() >= 10)
 
-#plot density plots of avg pi and sd pi
-avg_pi_density <- 
-  pi_df_one %>% 
-  ggplot(aes(x = avg_pi, y = ..density..)) +
-  geom_histogram(fill = "darkgreen", color = "black", bins = 50) +
-  geom_density(fill = "gray", alpha = 0.2) +
-  labs(x = "Average pi", y = "Density", title = "Average pi per species per cell") +
-  theme_minimal() 
 
-sd_pi_density <- 
-  pi_df_one %>% 
-  ggplot(aes(x = sd_pi, y = ..density..)) +
-  geom_histogram(fill = "darkgreen", color = "black", bins = 50) +
-  geom_density(fill = "gray", alpha = 0.2) +
-  labs(x = "SD pi", y = "Density", title = "SD pi per species per cell") +
-  theme_minimal() 
-
-#make plot list
-d_plot_grob <- list(avg_pi_density, sd_pi_density) %>% lapply(ggplotGrob)
-
-#save plots to output
-ggsave(paste0(plots, "/pi_density_plots.pdf"), gridExtra::marrangeGrob(grobs = d_plot_grob, nrow = 2, ncol = 1))
-
-#replicate the sampling 1000 times. 
-sum_list <- purrr::rerun(1000, pi_summary_fun(pi_df_one, n_species = 10)) 
+#replicate the sampling 100 times. 
+sum_list <- purrr::rerun(100, pi_summary_fun(pi_df, n_species = 10)) 
 
 #summarise these samples into a final df
 sum_df <- bind_rows(sum_list) %>%
-  group_by(cells) %>% 
-  dplyr::summarise(median.pi.avg = mean(median.pi), 
-                   median.pi.sd = sd(median.pi), 
-                   median.pi.skew = skewness(median.pi),
-                   mean.pi.avg = mean(mean.pi),  
-                   mean.pi.sd = sd(mean.pi), 
-                   mean.pi.skew = skewness(mean.pi),
-                   sd.pi.avg = mean(sd.pi), 
-                   sd.pi.sd = sd(sd.pi), 
-                   hill.zero.avg = mean(hill.zero), 
-                   hill.zero.sd = sd(hill.zero), 
-                   hill.one.avg = mean(hill.one), 
-                   hill.one.sd = sd(hill.one), 
-                   hill.two.avg = mean(hill.two), 
-                   hill.two.sd = sd(hill.two), 
-                   shannon.avg = mean(shannon), 
-                   shannon.sd = sd(shannon))
+  group_by(cell) %>% 
+  dplyr::summarise(
+    median.pi.avg = mean(median.pi), 
+    median.pi.sd = sd(median.pi), 
+    median.pi.skew = skewness(median.pi),
+    mean.pi.avg = mean(mean.pi),  
+    mean.pi.sd = sd(mean.pi), 
+    mean.pi.skew = skewness(mean.pi),
+    sd.pi.avg = mean(sd.pi), 
+    sd.pi.sd = sd(sd.pi), 
+    hill.zero.avg = mean(hill.zero), 
+    hill.zero.sd = sd(hill.zero), 
+    hill.one.avg = mean(hill.one), 
+    hill.one.sd = sd(hill.one), 
+    hill.two.avg = mean(hill.two), 
+    hill.two.sd = sd(hill.two), 
+    hill.three.avg = mean(hill.three),
+    hill.three.sd = sd(hill.three),
+    hill.four.avg = mean(hill.four),
+    hill.four.sd = sd(hill.four),
+    hill.five.avg = mean(hill.five),
+    hill.five.sd = sd(hill.five),
+    hill.six.avg = mean(hill.six),
+    hill.six.sd = sd(hill.six),
+    hill.seven.avg = mean(hill.seven),
+    hill.seven.sd = sd(hill.seven),
+    hill.eight.avg = mean(hill.eight),
+    hill.eight.sd = mean(hill.eight),
+    shannon.avg = mean(shannon), 
+    shannon.sd = sd(shannon)
+  )
 
+sum_df <- read_csv("data/genetics/sum_df_100.csv")
 #add lat longs back to df
 sum_df_latlongs <- test_nuc %>% 
   as_tibble() %>% 
-  filter(!duplicated(cells)) %>% 
-  dplyr::select(cells, latitude = Lat, longitude = Long) %>% 
-  right_join(sum_df, by = "cells") %>% 
-  filter(mean.pi.avg < 0.05) #%>% #remove species-level divergence
+  dplyr::filter(!duplicated(cell)) %>% 
+  dplyr::select(cell, latitude = Lat, longitude = Long) %>% 
+  right_join(sum_df, by = "cell") 
 
 
-sum_df_latlongs %>% 
-  #filter(mean.pi.skew < .015) %>% 
-  ggplot(aes(x = abs(latitude), y = hill.one.avg)) + 
-  geom_point() + 
-  geom_smooth(method = "lm") +
-  theme_minimal()
-
-
-fwrite(sum_df_latlongs, file = paste0("sum_df_", Sys.Date(), ".csv"))
+write_csv(sum_df_latlongs, "sum_df_100.csv")
 #sum_df <- fread("pi-summary-insects-10.csv")
 
 
-#write df to file
-fwrite(pi_env, paste0("pi_env_", Sys.Date(), ".csv"))
 
 
+####### PLOTS ################
 
 #extract the relevant column names (any name that contains a summary of pi, the hill number, or shannon entropy)
 gen_sum_vec <- grep("pi|hill|shannon", colnames(sum_df_latlongs), value = TRUE)
@@ -142,6 +135,19 @@ for(stat in gen_sum_vec){
 }
 
 
-#' 
-#' 
+# plot density plots of avg pi and sd pi
+avg_pi_density <- 
+  pi_df %>% 
+  ggplot(aes(x = avg_pi, y = ..density..)) +
+  geom_histogram(fill = "darkgreen", color = "black", bins = 50) +
+  geom_density(fill = "gray", alpha = 0.2) +
+  labs(x = "Average pi", y = "Density", title = "Average pi per species per cell") +
+  theme_minimal() 
+
+#make plot list
+d_plot_grob <- list(avg_pi_density, sd_pi_density) %>% lapply(ggplotGrob)
+
+#save plots to output
+ggsave(paste0(plots, "/pi_density_plots.pdf"), gridExtra::marrangeGrob(grobs = d_plot_grob, nrow = 2, ncol = 1))
+
 

@@ -163,15 +163,19 @@ ggsave(
 #' Write the sequence data in the BOLD csv to fasta files. Writing fasta files for species where there are at least three observations and occupy cells where there are more than nine species per cell.  Each fasta file is labeled as "speciesname.cell.nex".
 ## test_nuc ----
 #####filter data for the ideal number of individuals and species per cell.
-test_nuc <- pts_ext_1d %>% 
+test_nuc <- pts_ext_1d %>%
   raster::as.data.frame(xy = TRUE) %>%
   distinct(recordID, .keep_all = TRUE) %>% #only retain unique individuals
   filter_at(vars(recordID, bin_uri, cells, markercode, nucleotides, Lat, Long),
-            all_vars(!is.na(.))) %>% 
+            all_vars(!is.na(.))) %>%
   group_by(bin_uri, cells) %>% #group the data set by species, then by cell number
-  filter(str_detect(markercode, "COI"), !str_detect(markercode, "COII")) %>% #Filter for only COI sequences
+  filter(str_detect(markercode, "COI"),
+         !str_detect(markercode, "COII")) %>% #Filter for only COI sequences
   filter(n() > 2) %>% #retain only cells where there are more than two species observations per cell
-  sample_n(if(n() < 100) n() else 100) %>% #subsample individuals if there are 100 or more individuals per cell. This keeps sample sizes within an order of magnitude
+  sample_n(if (n() < 100)
+    n()
+    else
+      100) %>% #subsample individuals if there are 100 or more individuals per cell. This keeps sample sizes within an order of magnitude
   ungroup() %>%
   group_by(cells) %>%
   filter(n_distinct(bin_uri) > 9) %>% #retain cells with 10 or more species
