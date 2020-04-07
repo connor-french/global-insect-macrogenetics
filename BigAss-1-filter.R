@@ -70,9 +70,11 @@ dir.create(rasters)
 
 ### Start filtering -----
 # read in data and remove any row that contains NA values for latitude, longitude, and bin. 
-# since this data is too large to put in a github repository, you have to download it and hard code the path
+# I had to compress the data set to allow it to fit on github 
+# decompression takes a while
+bold_path <- here("data", "bold_data_insects.txt")
 bold_data <-
-  fread("../bold_data_insects.txt",
+  fread(paste0("unzip -p ", bold_path), # have to unzip before reading in
         na.strings = c("", "NA"),
         quote = "") %>%
   filter_at(vars(lat, lon, bin_uri), all_vars(!is.na(.)))

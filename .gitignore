@@ -37,3 +37,6 @@ vignettes/*.pdf
 *.knit.md
 
 .Rproj.user
+
+# big data file
+data/*.zip
