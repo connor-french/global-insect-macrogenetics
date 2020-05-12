@@ -2,8 +2,8 @@
 #only tested from high to low resolutions, not the other way around.
 
 #This function requires the raster package for raster manipulation and rnatural earth package for creating a blank world map
-require(raster)
-require(rnaturalearth)
+library(raster)
+library(rnaturalearth)
 
 #crs: define the crs you want to project to. It must be an equal area projection. The default crs is behrmann equal area. 
 #x: a raster or raster stack

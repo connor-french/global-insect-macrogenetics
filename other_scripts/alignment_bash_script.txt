@@ -1,8 +1,0 @@
-# Small script to align sequences
-# This assumes that clustalo is in your path and that you're inside the folder of sequences you want to align
-# change the number of threads to something appropriate for your system
-# make an output folder (I call mine "bold_seqs_aligned_[climate resolution in km]". You should use the same output folder for all subdirectories)
-OUTPATH="home/output/aligned_folder"
-for file in *; do
-clustalo -i $file --threads=8 -o $OUTPATH$file
-done

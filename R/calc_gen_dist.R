@@ -5,7 +5,7 @@ library(ape)
 gen_dist_calc <- function(x) {
   alignseq <- read.FASTA(x)
   checkseq <- base.freq(alignseq, all = TRUE)
-  dist <- dist.dna(alignseq, model = "raw")
+  dist <- dist.dna(alignseq, model = "raw", pairwise.deletion = TRUE) # this is Eq. 2 from Miraldo et al. 2016
   cell_1 <- str_split(x, pattern = "_", simplify = TRUE) #extract the cell id from the file name
   cell_2 <- cell_1[str_detect(cell_1, ".fas$")]
   cell <- str_split(cell_2, pattern = "\\.", simplify = TRUE)[,1]
