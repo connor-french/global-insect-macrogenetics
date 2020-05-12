@@ -43,6 +43,8 @@ data/bold_data_insects.txt.zip
 data/bold_data_insects.txt
 output/spreadsheets/filtered*
 output/spreadsheets/final*
+output/spreadsheets/bold*
+output/spreadsheets/seqstats*
 output/fastas_100/*
 output/fastas_200/*
 output/fastas_300/*
