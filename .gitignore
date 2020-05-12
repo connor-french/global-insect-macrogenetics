@@ -45,6 +45,7 @@ output/spreadsheets/filtered*
 output/spreadsheets/final*
 output/spreadsheets/bold*
 output/spreadsheets/seqstats*
+output/spreadsheets/fasta*
 output/fastas_100/*
 output/fastas_200/*
 output/fastas_300/*
