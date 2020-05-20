@@ -32,7 +32,9 @@ resample_equal_area <- function(x, crs = "+proj=cea +lon_0=0 +lat_ts=30 +x_0=0 +
   raster::res(world_raster) <- km * 1000
   
   #resample our raster of interest to the world raster
+  beginCluster()
   x_resampled <- raster::resample(x_repro, world_raster)
+  endCluster()
   
   return(x_resampled)
 }
