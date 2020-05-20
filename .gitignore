@@ -48,6 +48,7 @@ data/climate_raw/terrain/*
 data/climate_raw/chelsa_current/*
 data/climate_raw/soil/*
 data/wallace_shapefiles/*
+data/climate/*
 
 # large output files
 output/spreadsheets/filtered*
