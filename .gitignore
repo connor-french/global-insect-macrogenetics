@@ -56,12 +56,8 @@ output/spreadsheets/final*
 output/spreadsheets/bold*
 output/spreadsheets/seqstats*
 output/spreadsheets/fasta*
-output/fastas_100/*
-output/fastas_200/*
-output/fastas_300/*
-output/alignments_100/*
-output/alignments_200/*
-output/alignments_300/*
+output/fastas/*
+output/alignments/*
 output/legends/*
 
 
