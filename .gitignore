@@ -44,11 +44,9 @@ rsconnect/
 #large input files
 data/bold_data_insects.txt.zip
 data/bold_data_insects.txt
-data/climate_raw/terrain/*
-data/climate_raw/chelsa_current/*
-data/climate_raw/soil/*
+data/climate_raw/*
 data/wallace_shapefiles/*
-data/climate/*
+data/climate_agg/*
 
 # large output files
 output/spreadsheets/filtered*
