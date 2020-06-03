@@ -54,6 +54,7 @@ output/spreadsheets/final*
 output/spreadsheets/bold*
 output/spreadsheets/seqstats*
 output/spreadsheets/fasta*
+output/spreadsheets/med*
 output/fastas/*
 output/alignments/*
 output/legends/*
