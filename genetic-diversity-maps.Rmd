@@ -29,103 +29,46 @@ Read in summary stats files
 ```{r warning=FALSE, message=FALSE}
 spread_path <- here("output", "spreadsheets")
 
-sumstats_100 <- read_csv(file.path("output", "spreadsheets", "sumstats_100.csv")) %>% 
-  mutate(log_num_otus = log10(richness),
-         sqrt_pi = sqrt(avg_pi)) %>% 
-                       select(
-                         cells,
-                         log_num_otus,
-                         num_otus = richness,
-                         avg_pi,
-                         sqrt_pi,
-                         sd_pi,
-                         var_pi,
-                         hill_1 = hill_1_c,
-                         hill_2 = hill_2_c,
-                         hill_3 = hill_3_c,
-                         hill_4 = hill_4_c,
-                         hill_5 = hill_5_c
-                       )
-sumstats_200 <- read_csv(file.path(spread_path, "sumstats_200.csv")) %>% 
-  mutate(log_num_otus = log10(richness),
-         sqrt_pi = sqrt(avg_pi)) %>% 
-                       select(
-                         cells,
-                         log_num_otus,
-                         num_otus = richness,
-                         avg_pi,
-                         sqrt_pi,
-                         sd_pi,
-                         var_pi,
-                         hill_1 = hill_1_c,
-                         hill_2 = hill_2_c,
-                         hill_3 = hill_3_c,
-                         hill_4 = hill_4_c,
-                         hill_5 = hill_5_c
-                       )
-sumstats_300 <- read_csv(file.path(spread_path, "sumstats_300.csv")) %>% 
-  mutate(log_num_otus = log10(richness),
-         sqrt_pi = sqrt(avg_pi)) %>% 
-                       select(
-                         cells,
-                         log_num_otus,
-                         num_otus = richness,
-                         avg_pi,
-                         sqrt_pi,
-                         sd_pi,
-                         var_pi,
-                         hill_1 = hill_1_c,
-                         hill_2 = hill_2_c,
-                         hill_3 = hill_3_c,
-                         hill_4 = hill_4_c,
-                         hill_5 = hill_5_c
-                       )
+sumstats <- read_csv(file.path(spread_path, "med_3_10_sumstats.csv")) %>% 
+  mutate(log_num_otu = log10(num_otu),
+         log_num_ind = log10(num_ind)) %>% 
+  filter(avg_pi < 0.02) # outlier cell
 ```
 
 Read in and filter environmental variables. Keeping it small for exploratory purposes right now. Once we decide on what explanatory variables to use, I'll move this to a separate script so this document doesn't have to work so hard.
 ```{r, cache=TRUE}
-climate_100 <- stack(here("data", "climate", "rasters_100km", "chelsa_100km.tif"),
-                     here("data", "climate", "rasters_100km", "pc_7_LGM_2_5min_agg_100.tif"))
-names(climate_100) <- c(paste0("current_bio_", 1:19), paste0("lgm_bio_", 1:19))
+explanatory_path <- here("data", "climate_agg")
 
-explanatory_100 <- raster::extract(climate_100, sumstats_100$cells, df = TRUE) 
+explanatory_files <- list.files(explanatory_path, pattern = "*medium*", full.names = TRUE)
 
-climate_200 <- stack(here("data", "climate", "rasters_200km", "chelsa_200km.tif"),
-                     here("data", "climate", "rasters_200km", "pc_7_LGM_2_5min_agg_200.tif"))
-names(climate_200) <- c(paste0("current_bio_", 1:19), paste0("lgm_bio_", 1:19))
+explanatory_rasters <- stack(explanatory_files)
 
-explanatory_200 <- raster::extract(climate_200, sumstats_200$cells, df = TRUE) 
+names(explanatory_rasters) <- str_remove(basename(explanatory_files), ".tif")
 
-climate_300 <- stack(here("data", "climate", "rasters_300km", "chelsa_300km.tif"),
-                     here("data", "climate", "rasters_300km", "pc_7_LGM_2_5min_agg_300.tif"))
-names(climate_300) <- c(paste0("current_bio_", 1:19), paste0("lgm_bio_", 1:19)) 
+explanatory_vars <- names(explanatory_rasters)
+```
 
-explanatory_300 <- raster::extract(climate_300, sumstats_300$cells, df = TRUE) 
-
-
-explanatory_vars <- names(explanatory_100)[-1]
+```{r}
+explanatory <- explanatory_rasters[sumstats$cell] 
+names(explanatory) <- names(explanatory_rasters)
+explanatory <- as_tibble(explanatory)
 ```
 
 
 Read in rasters at the three resolutions to provide a template for the genetic diversity maps. Also obtaining the basemap, setting the color palette for the maps, and filtering the summary statistics.  
 ```{r}
-template_100 <-
-  stack(here("data", "climate", "rasters_100km", "chelsa_100km.tif"))
-template_200 <-
-  stack(here("data", "climate", "rasters_200km", "chelsa_200km.tif"))
-template_300 <-
-  stack(here("data", "climate", "rasters_300km", "chelsa_300km.tif"))
+template_medium <- raster(here("data", "templates", "template_medium.tif"))
 
 world_basemap <-
   ne_coastline(scale = "small", returnclass = "sf") %>%
-  st_transform(crs(template_100)) %>% 
+  st_transform(crs(template_medium)) %>% 
   st_simplify()
 
 pal <- wes_palette("Zissou1", 100, type = "continuous")
 
-sumstats <- colnames(sumstats_100 %>%
-                       select(-cells)) %>%
-  set_names()
+# sumstats <- colnames(sumstats %>%
+#                        select(-cell)) %>%
+#   set_names()
 ```
 
 
@@ -136,11 +79,11 @@ create_poly <- function(resolution){
   
   vals <- rep(NA, ncell(rast))
   
-  sumstats <- get(paste0("sumstats_", resolution))
+  sumstats <- get("sumstats")
   
-  explanatory <- get(paste0("explanatory_", resolution))
+  explanatory <- get("explanatory")
   
-  vals[sumstats$cells] <- sumstats$avg_pi
+  vals[sumstats$cell] <- sumstats$avg_pi
   
   rast <- setValues(rast, values = vals)
   
@@ -149,6 +92,8 @@ create_poly <- function(resolution){
     rename(avg_pi = layer) %>% 
     bind_cols(sumstats %>% select(-avg_pi),
               explanatory)
+  
+  return(rast_poly)
 }
 
 ```
@@ -188,16 +133,19 @@ write_legends <- function(sumstat, resolution) {
 
 Write legends to file for plotting and create a list of sumstat polygons for each resolution.
 ```{r}
-resolutions <- c(100, 200, 300)
+# resolutions <- "medium"
+# 
+# sumstat_poly <- vector(mode = "list", length = 1)
+# 
+# names(sumstat_poly) <- c("medium")
+# 
+# for (res in seq_along(resolutions)) {
+#   map(sumstats, ~write_legends(.x, resolution = resolutions[res]))
+#   sumstat_poly[[res]] <- create_poly(resolutions[res])
+#}
 
-sumstat_poly <- vector(mode = "list", length = 3)
-
-names(sumstat_poly) <- c("res_100", "res_200", "res_300")
-
-for (res in seq_along(resolutions)) {
-  map(sumstats, ~write_legends(.x, resolution = resolutions[res]))
-  sumstat_poly[[res]] <- create_poly(resolutions[res])
-}
+map(names(sumstats), ~write_legends(.x, resolution = "medium"))
+sumstat_poly <- create_poly("medium")
 ```
 
 
@@ -215,7 +163,7 @@ shinyApp(
     ),
     column(3,
       selectInput("sumstat", "Summary Statistic",
-                  choices = sumstats)
+                  choices = names(sumstats))
     ),
     column(3,
       selectInput("explanatory", "Explanatory Variable", 
@@ -235,7 +183,7 @@ shinyApp(
   
   server = function(input, output) {
     ss_poly <- reactive(df <-
-                          sumstat_poly[[paste0("res_", input$resolution)]])
+                          sumstat_poly)
     
     ss_lm <- reactive({
       lm(reformulate(input$explanatory, input$sumstat), data = ss_poly())
@@ -263,8 +211,8 @@ shinyApp(
         layout(
           images = list(
             source = base64enc::dataURI(file = here(
-              "output", "legends", paste0(input$sumstat, "_100", ".png")
-            )),
+              "output", "legends", paste0(input$sumstat, "_", input$resolution, ".png"))
+            ),
             x = 0,
             y = 0,
             sizex = 0.75,
