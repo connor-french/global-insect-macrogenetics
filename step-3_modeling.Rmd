@@ -1,0 +1,67 @@
+---
+title: "Modeling"
+output: html_document
+---
+
+Load packages
+```{r}
+library(raster)
+library(tidyverse)
+#library(tidymodels)
+library(sf)
+library(here)
+```
+
+
+Read in the data. Two main data sources- the genetic summary statistics and the environmental data. 
+```{r}
+sumstats <- read_csv(here("output", "spreadsheets", "med_3_10_sumstats.csv"))
+
+rast_list <- list.files(here("data", "climate_agg"),
+                        pattern = "medium",
+                        full.names = TRUE)
+
+rasters_full <- raster::stack(rast_list)
+crs(rasters_full) <- "+proj=cea +lon_0=0 +lat_ts=30 +x_0=0 +y_0=0 +datum=WGS84 +ellps=WGS84 +units=m +no_defs"
+
+glimpse(sumstats)
+rasters_full
+```
+
+Extract raster values for each cell that has genetic summary data and join the data frames for a full data set. 
+```{r}
+explanatory_df <- rasters_full[sumstats$cell] %>% 
+  as_tibble() %>% 
+  mutate(cell = sumstats$cell) 
+  
+
+full_df <- left_join(sumstats, explanatory_df, by = "cell") %>% 
+  # arrange for plotting later
+  arrange(cell)
+
+glimpse(full_df)
+```
+
+
+Plant phylogenetic diversity has an excessive number of NAs (56). May need to throw out. Others have between 0 and 3 NAs. Need to see if these are for the same cells or not
+```{r}
+full_df %>% 
+  summarize_all(funs(sum(is.na(.)))) %>% 
+  pivot_longer(cols = everything(), 
+               names_to = "variable",
+               values_to = "num_NA")
+```
+
+It seems like the missing data from most variables are the same cells (one exception)
+```{r}
+nrow_filt <- full_df %>% 
+  select(-plant_medium_plant_phylo) %>% 
+  na.omit() %>% 
+  nrow()
+
+nrow(full_df) - nrow_filt
+```
+
+
+
+
