@@ -10,9 +10,21 @@ library(tidyverse)
 #library(tidymodels)
 library(sf)
 library(here)
+library(wesanderson)
+library(rnaturalearth)
+library(patchwork)
+```
+
+## Map helpers
+```{r}
+pal <- wes_palette("Zissou1", 100, type = "continuous")
+world_base <- rnaturalearth::ne_countries(scale = "large", returnclass = "sf") %>%
+  select(continent, name_long) %>% 
+  st_transform(crs = "+proj=cea +lon_0=0 +lat_ts=30 +x_0=0 +y_0=0 +datum=WGS84 +ellps=WGS84 +units=m +no_defs") 
 ```
 
 
+## Data wrangling
 Read in the data. Two main data sources- the genetic summary statistics and the environmental data. 
 ```{r}
 sumstats <- read_csv(here("output", "spreadsheets", "med_3_10_sumstats.csv"))
@@ -28,6 +40,8 @@ glimpse(sumstats)
 rasters_full
 ```
 
+
+
 Extract raster values for each cell that has genetic summary data and join the data frames for a full data set. 
 ```{r}
 explanatory_df <- rasters_full[sumstats$cell] %>% 
@@ -36,30 +50,182 @@ explanatory_df <- rasters_full[sumstats$cell] %>%
   
 
 full_df <- left_join(sumstats, explanatory_df, by = "cell") %>% 
+  # convert soil classifications to a factor
+  mutate(soil_medium_hwsd = as.factor(soil_medium_hwsd)) %>% 
   # arrange for plotting later
   arrange(cell)
 
 glimpse(full_df)
 ```
 
+Convert this to a `sf` polygon object for mapping and spatial cross validation.
+```{r}
+template_medium <- raster(here("data", "templates", "template_medium.tif"))
+
+template_medium[full_df$cell] <- full_df$avg_pi
+
+full_sf <- rasterToPolygons(template_medium) %>% 
+  st_as_sf() %>% 
+  bind_cols(full_df) %>% 
+  select(-template_medium) %>%
+  # Adding continent and country columns to the data frame.
+  st_join(world_base["continent"], largest = TRUE)
+
+
+glimpse(full_sf)
+```
+
+Visualizing temperature to make sure the conversion was successful.
+```{r}
+ggplot() +
+  geom_sf(data = full_sf, aes(fill = current_medium_bio_1, color = current_medium_bio_1)) +
+  scale_fill_gradientn(colors = pal) +
+  scale_color_gradientn(colors = pal) + 
+  theme_minimal()
+```
+
+### Continent mapping
+How many cells successfully mapped to a continent, and what is the sample size? Looks like 1 cells did not map correctly.
+```{r}
+full_sf %>% 
+  count(continent)
+```
+
+Visualize which cells mapped correctly. All of the "Open Ocean" values are islands around Africa. Although these may politically be assigned a different continent (e.g. some islands around Madagascar are European), spatially they're near Africa, so I'm classifying them as African.  
+```{r}
+ggplot() + 
+  geom_sf(data = world_base) +
+  geom_sf(data = full_sf, aes(fill = continent, color = continent))
+```
+
+Converting the cells and taking another look. Looks fine, except for the NA. 
+```{r}
+full_sf <- full_sf %>% 
+  mutate(continent = ifelse(str_detect(continent, "Seven"), "Africa", continent))
+
+ggplot() + 
+  geom_sf(data = world_base) +
+  geom_sf(data = full_sf, aes(fill = continent, color = continent))
+```
+
+
+Let's see where the NA is. Looks like South America! 
+```{r}
+full_sf %>% 
+  mutate(na_cont = if_else(is.na(continent), "Missing", "Present")) %>% 
+  ggplot() + 
+  geom_sf(aes(fill = na_cont, color = na_cont))
+```
+
+Replacing the NA value with "South America". North America has the most representation, while South America has the least.
+```{r}
+full_complete <- full_sf %>% 
+  mutate(continent = if_else(is.na(continent), "South America", continent))
+
+count(full_complete, continent) %>% mutate(perc = n / sum(n)) %>% 
+  as_tibble() %>% 
+  select(continent, n, perc) %>%
+  arrange(desc(perc)) %>% 
+  knitr::kable()
+```
+
+### Predictor variables
 
 Plant phylogenetic diversity has an excessive number of NAs (56). May need to throw out. Others have between 0 and 3 NAs. Need to see if these are for the same cells or not
 ```{r}
-full_df %>% 
-  summarize_all(funs(sum(is.na(.)))) %>% 
-  pivot_longer(cols = everything(), 
+full_complete %>% 
+  summarize_all(~sum(is.na(.))) %>% 
+  pivot_longer(cols = !contains("geometry"), 
                names_to = "variable",
-               values_to = "num_NA")
+               values_to = "num_NA") %>% 
+  filter(num_NA > 0)
 ```
 
-It seems like the missing data from most variables are the same cells (one exception)
+It seems like the missing data from most variables are the same cells (four total cells with na)
 ```{r}
-nrow_filt <- full_df %>% 
+nrow_filt <- full_complete %>% 
   select(-plant_medium_plant_phylo) %>% 
   na.omit() %>% 
   nrow()
 
-nrow(full_df) - nrow_filt
+nrow(full_complete) - nrow_filt
+```
+
+#### Plant richness
+Let's visualize where the plant richness diversity missing data is. It looks like the missing data is restricted to somewhat randomly distributed islands, including New Zealand. Let's explore a bit more to see if it would be worth diving into the data to fill in the missing values.
+```{r}
+full_complete %>% 
+  mutate(plant_missing = 
+           if_else(is.na(plant_medium_plant_phylo), "Missing", "Present")) %>% 
+  ggplot() + 
+  geom_sf(aes(fill = plant_missing, color = plant_missing))
+```
+
+If there's no linear relationship with a Hill One or Average pi, then I'm just going to throw it out.
+
+Plots don't look like much:
+```{r}
+p_hill <- ggplot(data = full_complete, aes(x = plant_medium_plant_phylo, y = hill_1)) + 
+  geom_point() + 
+  geom_smooth()
+
+p_pi <- ggplot(data = full_complete, aes(x = plant_medium_plant_phylo, y = avg_pi)) + 
+  geom_point() + 
+  geom_smooth()
+
+
+p_hill / p_pi
+```
+
+Linear models also show no real relationship (avg_pi is significant, but R2 is 0.01)
+```{r}
+summary(lm(hill_1 ~ plant_medium_plant_phylo, data = full_complete))
+
+summary(lm(avg_pi ~ plant_medium_plant_phylo, data = full_complete))
+```
+
+**Decision**: Removing the plant richness as a predictor.  
+
+Let's see what the distribution of cells with an NA is, sans-plant richness. 3 from Africa, 1 from Europe. All are islands.
+```{r}
+full_missing <- full_complete %>% select(-plant_medium_plant_phylo)
+
+full_missing <- full_missing[rowSums(is.na(full_missing)) > 0,]
+
+ggplot() +
+  geom_sf(data = world_base) +
+  geom_sf(data = full_missing, aes(fill = continent, color = continent))
+```
+
+What is the sample size per cell? These are info-rich cells, but there are too many variables to get this info back from to where I don't think the effort is worth it. I'm going to remove them and call it good.
+```{r}
+full_missing %>% select(continent, num_otu, num_ind, num_order)
+```
+
+
+Remove the plant richness column and filter NAs. Also adding in latitude and longitude columns.
+```{r}
+full_filter <- full_complete %>% 
+  select(-plant_medium_plant_phylo) %>% 
+  remove_missing() 
+
+# get centroid coordinate for each cell
+coords <- st_centroid(full_filter) %>% 
+  st_coordinates()
+
+full_filter <- full_filter %>% 
+  mutate(longitude = coords[,1],
+         latitude = coords[,2])
+
+glimpse(full_filter)
+```
+
+Map the latitude to make sure I got the correct column.
+```{r}
+ggplot() +
+  geom_sf(data = full_filter, aes(fill = latitude, color = latitude)) +
+  scale_fill_gradientn(colors = pal) + 
+  scale_color_gradientn(colors = pal)
 ```
 
 
