@@ -1,0 +1,1753 @@
+---
+title: "Modeling"
+author: "Connor French"
+output: 
+  html_document:
+    toc: true
+---
+
+This is the finalized round of modeling. See `step-3_data-exploration` for exploration of spatial autocorrelation, exploring variable correlations, etc. 
+
+## Setup
+
+Load packages
+```{r setup, message=FALSE, warning=FALSE}
+# note, I also use the dismo package for producing a MESS map, but I don't load the entire thing.
+
+library(raster)
+library(tidyverse)
+library(tidymodels)
+library(sf)
+library(here)
+library(wesanderson)
+library(rnaturalearth)
+library(patchwork)
+library(furrr)
+library(spdep)
+library(ncf)
+library(rstan)
+library(tidybayes)
+library(bayesplot)
+library(BBmisc)
+library(rstanarm)
+library(glmmfields)
+library(projpred)
+library(ggtext)
+library(stars)
+
+
+# setup parallelization
+options(mc.cores = parallel::detectCores())
+```
+
+
+### Map helpers
+```{r map-helpers}
+pal <- wes_palette("Zissou1", 100, type = "continuous")
+
+# for assigning cells to continents. Islands are missed at coarser resolutions
+world_base <- rnaturalearth::ne_countries(scale = "large", returnclass = "sf") %>%
+  select(continent, name_long) %>% 
+  st_transform(crs = "+proj=cea +lon_0=0 +lat_ts=30 +x_0=0 +y_0=0 +datum=WGS84 +ellps=WGS84 +units=m +no_defs") 
+
+# for mapping. this will be smaller so plotting is faster
+world_base_map <- rnaturalearth::ne_countries(scale = "small", returnclass = "sf") %>%
+  select(continent, name_long) %>% 
+  st_transform(crs = "+proj=cea +lon_0=0 +lat_ts=30 +x_0=0 +y_0=0 +datum=WGS84 +ellps=WGS84 +units=m +no_defs") 
+```
+
+
+
+### Read in data
+
+```{r}
+new_stab_spatial <- read_csv(here("output", "spreadsheets", "model_data.csv"))
+```
+
+
+### Helper functions
+Helper functions for exploring results
+```{r}
+# get draws from the posterior distribution
+# response can be either hill_1 or sqrt_pi, since those are what we're interested in
+sample_response_posterior <- function(model, num_iterations = 1000, response = "hill_1") {
+  
+  # sample from the posterior distribution
+  post_draws <- posterior_predict(model, iter = num_iterations) %>% 
+    t() 
+  colnames(post_draws) <- paste0("draw_", 1:num_iterations)
+  
+  d <- model$data
+  
+  # get the observed response vector
+  if (response == "hill_1") {
+    resp = d$hill_1
+  } else if (response == "sqrt_pi") {
+    resp = d$sqrt_pi
+  }
+  
+  # create a data frame of posterior draws and add in the observed values for comparison.
+  # in addition, I'm adding in the latitude and longitude 
+  post_df <- post_draws %>% 
+    as_tibble() %>% 
+    mutate(observed = resp,
+           longitude = model$data$lon_scaled * 1e6,
+           latitude = model$data$lat_scaled * 1e6,
+           id = 1:nrow(post_draws)) %>% 
+    pivot_longer(cols = c(contains("_"), observed),
+               names_to = "draw",
+               values_to = "response_post") %>% 
+    mutate(post_samples = if_else(draw == "observed", "observed", "posterior"))
+  
+  return(post_df)
+}
+
+# function to retrieve the parameter posteriors and log probability posterior. This will also convert each class of posterior to a data frame with reasonable column names
+tidy_post <- function(model) {
+  post_dfs <- rstan::extract(model$model, permute = TRUE) %>% 
+    map(as_tibble)
+  
+  # rename beta columns to their variable names
+  colnames(post_dfs$B) <- colnames(model$X) %>% 
+    janitor::make_clean_names(case = "snake")
+  
+  # rename spatial effect columns
+  suffix <- str_remove(colnames(post_dfs$spatialEffectsKnots), "1.")
+  colnames(post_dfs$spatialEffectsKnots) <- paste0("knot_", suffix)
+  
+  return(post_dfs)
+}
+
+```
+
+## GDE
+
+### Model selection
+
+We're going to perform model selection with a simple model that does not account for spatial autocorrelation to give us a simpler model to incorporate the added complexity of a GLMM with. There is a bias towards selecting spatially autocorrelated variables doing it this way, but there is no straightforward way to perform variable selection with the random fields GLMM that wouldn't take weeks to run or be statistically appropriate. We'll just have to acknowledge the potential bias.  
+
+The name `model_mult_reg_frz` is from when I tried to explicitly incorporate the freezeline into the model, but found that it added too much complexity for the amount of data we have.
+
+#### Full model
+```{r, eval = FALSE}
+set.seed(20934)
+model_mult_reg_frz <- stan_glm(
+  hill_1 ~
+    current_medium_bio_13 +
+    current_medium_bio_14 +
+    current_medium_bio_15 +
+    current_medium_bio_2 +
+    current_medium_bio_5 +
+    ghh_medium_std_dev +
+    human_medium_gHM +
+    temp_trend +
+    temp_var + 
+    precip_trend +
+    precip_var,
+  data = new_stab_spatial,
+  prior = normal(location = 0, scale = 0.1),
+  prior_intercept = normal(location = 0, scale = 1),
+  family = gaussian(),
+  iter = 4000,
+  chains = 2,
+  cores = 2
+)
+```
+
+Write the model to file
+```{r, eval=FALSE}
+write_rds(model_mult_reg_frz, here("output", "models", "mult_reg_new_stab.rds"))
+```
+
+
+```{r, echo=FALSE}
+model_mult_reg_frz <- read_rds(here("output", "models", "mult_reg_new_stab.rds"))
+```
+
+
+Get the response and posterior sample for posterior predictive checks. In addition to the plots below, I also used `shinystan` to explore posteriors.
+```{r, cache=TRUE}
+model_mult_reg_frz_resp <- model_mult_reg_frz$data$hill_1
+model_mult_reg_frz_post <- glmmfields::posterior_predict(model_mult_reg_frz, iter = 1000)
+```
+
+Not accounting for spatial autocorrelation results in a posterior that more closely approximates the data. It appears that spatial autocorrelation gives the GDE a more gaussian shape, while the real relationship is likely bimodal, as revealed by the difference in Hill 1 between regions above the freezeline and below it.
+```{r}
+ppc_dens_overlay(model_mult_reg_frz_resp, model_mult_reg_frz_post[1:50,])
+ppc_ecdf_overlay(model_mult_reg_frz_resp, model_mult_reg_frz_post[1:50,])
+ppc_boxplot(model_mult_reg_frz_resp, model_mult_reg_frz_post[sample(1000, 8),])
+```
+
+
+```{r}
+ppc_stat_2d(model_mult_reg_frz_resp, model_mult_reg_frz_post, stat = c("mean", "sd"))
+ppc_stat_2d(model_mult_reg_frz_resp, model_mult_reg_frz_post, stat = c("median", "IQR"))
+```
+
+
+```{r}
+# remove the warmup 
+mult_reg_frz_posteriors <- as.matrix(model_mult_reg_frz)[2001:4000,]
+
+betas <- colnames(mult_reg_frz_posteriors)[2:13]
+
+mcmc_intervals(mult_reg_frz_posteriors, 
+           pars = betas,
+           prob = 0.50,
+           prob_outer = 0.90) +
+  geom_vline(xintercept = 0) +
+  ggtitle("50% and 90% CI intervals")
+
+mcmc_intervals(mult_reg_frz_posteriors, 
+           pars = betas,
+           prob = 0.70,
+           prob_outer = 0.90) +
+  geom_vline(xintercept = 0) +
+  ggtitle("70% and 90% CI intervals")
+
+```
+
+
+#### Projective variable selection
+Let's try projective variable selection.
+```{r, cache=TRUE}
+ref_mult_reg_frz <- get_refmodel(model_mult_reg_frz)
+
+cv_mult_reg_frz <- cv_varsel(ref_mult_reg_frz, method = "forward")
+```
+
+It picks the variables we've been seeing to come on top.
+```{r}
+solution_terms(cv_mult_reg_frz)
+```
+
+
+Makes sense. This is what we've been seeing with other non-spatial approaches.
+```{r}
+plot(cv_mult_reg_frz, stats = c('elpd', 'rmse'))
+```
+
+
+```{r}
+# plot the validation results, this time relative to the full model
+plot(cv_mult_reg_frz, stats = c('elpd', 'rmse'), deltas = TRUE)
+```
+
+It looks like 5 variables will give our model nearly the same amount of performance as the full model without being too large
+```{r}
+ # Visualise themost relevant variables in the full model -->
+ mcmc_areas(as.matrix(ref_mult_reg_frz$fit),
+            pars = c(solution_terms(cv_mult_reg_frz)[1:5],
+                     "sigma")) 
+```
+
+
+### Random Fields GLMM
+```{r, eval=FALSE}
+model_top_5_nc <-
+  glmmfields(
+  hill_1 ~
+    current_medium_bio_13 +
+    current_medium_bio_5 +
+    temp_trend +
+    temp_var + 
+    precip_trend,
+  data = new_stab_spatial,
+  family = gaussian(),
+  lat = "lat_scaled",
+  lon = "lon_scaled",
+  nknots = 20,
+  iter = 7000,
+  save_log_lik = TRUE,
+  chains = 4,
+  estimate_df = TRUE,
+  covariance = "exponential",
+  # intercept can't move beyond -1 or 1, so a relatively small scale is justified.
+  prior_intercept = student_t(
+    df = 1000,
+    location = 0,
+    scale = 1
+  ),
+  # betas are going to be very small too (definitely under 0.05), because the predictors are normalized and centered, and the response is bounded between zero and one (our data is between 0.35ish and 0.65ish, and Hill numbers wouldn't realistically reach the extremes). So a sigma of 0.1 is weakly regularizing and a normal prior is appropriate. 
+  prior_beta = student_t(1000, 0, 0.1),
+  prior_sigma = half_t(1000, 0, 1),
+  prior_gp_theta = half_t(1000, 0, 5),
+  prior_gp_sigma = half_t(1000, 0, 1),
+  control = list(adapt_delta = 0.99,
+                 max_treedepth = 15),
+  seed = 6666
+)
+
+
+```
+
+Write model to file.
+```{r, eval=FALSE}
+write_rds(model_top_5_nc, here("output", "models", "glmm_top_5_new_stab.rds"))
+```
+
+```{r, echo=FALSE}
+model_top_5_nc <- read_rds(here("output", "models", "glmm_top_5_new_stab.rds"))
+```
+
+#### Response posterior
+Let's do a quick check to see if the posterior agrees with what I've been seeing. It does!
+```{r, cache=TRUE}
+model_top_5_nc_resp <- model_top_5_nc$data$hill_1
+model_top_5_nc_post <- glmmfields::posterior_predict(model_top_5_nc, iter = 1000)
+
+ppc_dens_overlay(model_top_5_nc_resp, model_top_5_nc_post[1:50,])
+ppc_ecdf_overlay(model_top_5_nc_resp, model_top_5_nc_post[1:50,])
+ppc_boxplot(model_top_5_nc_resp, model_top_5_nc_post[sample(1000, 8),])
+```
+
+
+#### Residual vs fit
+
+Get a quick idea about any patterns in the residuals. Looks good!  
+
+```{r}
+plot(model_top_5_nc, type = "residual-vs-fitted")
+```
+
+How does the shape of the observed Hill 1 match the model's prediction? Looks like the model predicts the center relatively well, but the variation isn't represented. This is likely due to the model's bimodal posterior and the fact that it is removing spatial autocorrelation, which would make the posteriors align better.  
+
+```{r}
+ppc_stat_2d(model_top_5_nc_resp, model_top_5_nc_post, stat = c("mean", "sd"))
+ppc_stat_2d(model_top_5_nc_resp, model_top_5_nc_post, stat = c("median", "IQR"))
+```
+
+#### Beta posteriors
+Looks like precipitation of the wettest month and temperature of the warmest month are the top predictors, followed by temperature trend, temperature variability, and precipitation trend.  
+
+```{r}
+# remove the warmup 
+top_5_nc_posteriors <- as.matrix(model_top_5_nc$model)[3501:7000,]
+
+betas <- c("B[2]", "B[3]", "B[4]", "B[5]", "B[6]")
+
+mcmc_intervals(top_5_nc_posteriors, 
+           pars = betas,
+           prob = 0.50,
+           prob_outer = 0.90) +
+  geom_vline(xintercept = 0) +
+  ggtitle("50% and 90% CI intervals")
+
+mcmc_intervals(top_5_nc_posteriors, 
+           pars = betas,
+           prob = 0.70,
+           prob_outer = 0.95) +
+  geom_vline(xintercept = 0) +
+  ggtitle("70% and 95% CI intervals")
+
+```
+
+
+#### Bayes R^2
+Function from Gelman et al. 2018 to calculate a bayes version of the R2 value. I modified it to account for the Gaussian Process variance.  
+
+```{r}
+bayes_R2_glmmfields <- function(fit) {
+y_pred <- glmmfields::posterior_linpred(fit)
+var_fit <- apply(y_pred, 1, var)
+var_res <- as.matrix(fit$model, pars = c("sigma"))^2
+var_gp <- as.matrix(fit$model, pars = c("gp_sigma"))^2
+return(var_fit / (var_fit + var_res + var_gp))
+}
+
+
+r2_df_nc <- tibble(
+  r2_top_5_nc =  bayes_R2_glmmfields(model_top_5_nc)[,1]
+) %>% 
+  pivot_longer(cols = everything(),
+               names_to = "model",
+               values_to = "post")
+
+ggplot(data = r2_df_nc, aes(x = post, color = model)) +
+  geom_density() +
+  labs(title = paste0("Median = ", round(median(r2_df_nc$post), 3)))
+
+```
+
+
+#### Publication figs
+
+Let's take a look at this with density plots.  
+Get posteriors for each model  
+```{r, cache=TRUE, warning=FALSE}
+response_posts_top_5_nc <- sample_response_posterior(model_top_5_nc)
+
+param_posts_top_5_nc <- tidy_post(model_top_5_nc)
+```
+
+##### Response posterior
+
+The posterior reflects the division above and below the freezeline of Hill 1 observed in the data. I will probably adjust the "Density" label to move closer to the plot in Inkscape, but that's the only modification I'll make outside of this script.  
+
+```{r response-post-gde}
+hill_frz_line <- new_stab_spatial %>% 
+  group_by(min_temp) %>% 
+  summarize(hill_median = median(hill_1)) %>% 
+  pivot_wider(names_from = min_temp, values_from = hill_median)
+
+
+# changing names for min_temp variable for appropriate labels in boxplot
+new_stab_boxplot <- new_stab_spatial %>% 
+  mutate(min_temp = case_when(
+    min_temp == "temperate" ~ "Above Freezeline\n(Observed Data)",
+    min_temp == "tropical" ~ "Below Freezeline\n(Observed Data)"
+  ))
+
+ggplot() +
+  geom_density(data = response_posts_top_5_nc, 
+               aes(x = response_post, 
+                   group = draw), 
+               color = alpha("darkgray", 0.1)) +
+  geom_density(data = new_stab_spatial,
+               aes(x = hill_1),
+               color = "darkgreen") +
+  geom_vline(xintercept = hill_frz_line$temperate, 
+             alpha = 0.5,
+             linetype = 2) +
+  geom_vline(xintercept = hill_frz_line$tropical, 
+             alpha = 0.5,
+             linetype = 2) +
+  geom_boxplot(data = new_stab_boxplot, aes(x = hill_1, y = min_temp), color = "darkgreen") +
+  labs(x = "GDE posterior",
+       y = "Density") +
+  theme_bw()
+```
+
+
+##### Beta posteriors
+The dot and lines below each density plot indicate the median, 80% highest posterior density, and 95% highest posterior density, respectively.  
+
+```{r beta-gde-1, cache=TRUE}
+hpd_top_5_nc <- param_posts_top_5_nc$B %>% 
+  pivot_longer(everything(), names_to = "beta", values_to = "posterior") %>% 
+  group_by(beta) %>% 
+  summarize(
+    hpd_95_hi = HDInterval::hdi(posterior, credMass = 0.95)["upper"],
+    hpd_95_low = HDInterval::hdi(posterior, credMass = 0.95)["lower"],
+    hpd_90_hi = HDInterval::hdi(posterior, credMass = 0.90)["upper"],
+    hpd_90_low = HDInterval::hdi(posterior, credMass = 0.90)["lower"],
+    hpd_80_hi = HDInterval::hdi(posterior, credMass = 0.80)["upper"],
+    hpd_80_low = HDInterval::hdi(posterior, credMass = 0.80)["lower"],
+    hpd_70_hi = HDInterval::hdi(posterior, credMass = 0.70)["upper"],
+    hpd_70_low = HDInterval::hdi(posterior, credMass = 0.70)["lower"],
+    hpd_50_hi = HDInterval::hdi(posterior, credMass = 0.50)["upper"],
+    hpd_50_low = HDInterval::hdi(posterior, credMass = 0.50)["lower"]
+    )
+
+
+param_posts_top_5_nc$B %>% 
+  select(-intercept) %>% 
+  pivot_longer(everything(), 
+               names_to = "parameter",
+               values_to = "posterior") %>% 
+  mutate(parameter = case_when(
+    str_detect(parameter, "bio_5") ~ "Max. Temp. Warmest Month",
+    str_detect(parameter, "bio_13") ~ "Max. Precip. Wettest Month",
+    parameter == "temp_var" ~ "Temp. Variation",
+    parameter == "temp_trend" ~ "Temp. Trend",
+    parameter == "precip_trend" ~ "Precip. Trend"
+  ),
+    parameter = fct_reorder(parameter, abs(posterior))) %>% 
+  ggplot(aes(x = posterior, y = parameter)) + 
+  geom_vline(xintercept = 0, linetype = "dashed", alpha = 0.7) +
+  stat_halfeye(.width = c(0.70, 0.95), fill = "darkgreen", alpha = 0.9) +
+  labs(x = "Posterior", 
+       y = NULL) +
+  theme_bw()
+```
+
+##### Bayes R^2
+
+R^2 looks decent for an analysis like this. R^2 isn't a very "Bayesian" way of assessing model fit, but biologists (including me) like it.    
+
+```{r bayes-r2-gde}
+# get 95% highest 
+hpd_95_nc <- HDInterval::hdi(r2_df_nc$post, credMass = 0.95)
+
+ggplot(data = r2_df_nc, aes(x = post)) +
+  geom_density(fill = "darkgreen", alpha = 0.9) +
+  labs(title = paste0("Median R<sup>2</sup> = ",
+                                round(median(r2_df_nc$post), 3),
+                      ". 95% HPDI = [",
+                      round(hpd_95_nc["lower"], 3),
+                      ", ",
+                      round(hpd_95_nc["upper"], 3),
+                      "]"),
+       x = "Posterior",
+       y = NULL) + 
+  theme_bw() +
+  theme(plot.title = ggtext::element_markdown())
+
+```
+
+##### Maps
+Global maps of genetic diversity.  
+
+First, I'm using the model to predict across available terrestrial climate data. I am grabbing the posterior distribution for each predicted cell, and a summary of it (median, 95% highest posterior density interval, range: upper - lower HPDI).  
+
+First, I'm going to read in and do some data wrangling with the predictor data. I have to normalize the global data using the same mean and standard deviation I used to normalize the observations I used for modeling.  
+```{r maps-gde-1}
+predictors <- names(as_tibble(model_top_5_nc$X))[-1]
+
+# Read in predictor rasters
+rast_list_medium <- list.files(here("data", "climate_agg"),
+                        pattern = "medium",
+                        full.names = TRUE) 
+
+rast_list_pred <- rast_list_medium[str_detect(rast_list_medium, 
+                                              paste(predictors, collapse = "|"))]
+
+rasters_full_medium <- raster::stack(rast_list_pred)
+crs(rasters_full_medium) <- "+proj=cea +lon_0=0 +lat_ts=30 +x_0=0 +y_0=0 +datum=WGS84 +ellps=WGS84 +units=m +no_defs"
+
+# get cell names from the raster in case we need to pair with old rasters down the line
+cells <- rasters_full_medium %>% 
+  as.data.frame() %>% 
+  na.omit() %>% 
+  rownames()
+
+# read in the stability geojson files
+stability_sf <- read_sf(here("data", "climate_poly", "new_stability.geojson"), 
+                        crs = "+proj=cea +lon_0=0 +lat_ts=30 +x_0=0 +y_0=0 +datum=WGS84 +ellps=WGS84 +units=m +no_defs")
+
+
+# convert to data frame and add in the stability data 
+global_predictors <- rasters_full_medium %>%
+  rasterToPolygons() %>%
+  st_as_sf() %>%
+  st_join(stability_sf, join = st_equals) %>%
+  mutate(cell = cells) %>%
+  rename(temp_trend = GlobalExtreme_tsTrendExt,
+         temp_var = GlobalExtreme_tsVarExt,
+         precip_trend = GlobalExtreme_prTrendExt) %>% 
+  select(-GlobalExtreme_prVarExt)
+        
+
+global_centroids <- global_predictors %>% 
+  st_centroid(of_largest_polygon = TRUE) %>% 
+  st_coordinates()
+
+global_predictors <- global_predictors %>% 
+  mutate(lon_scaled = global_centroids[,"X"] * 0.000001,
+         lat_scaled = global_centroids[,"Y"] * 0.000001)
+
+# get the mean and sd of the original data to convert the standardized data back to it's original values
+original_df <- new_stab_spatial %>% 
+  select(cell) %>% 
+  mutate(cell = as.character(cell)) %>% 
+  left_join(global_predictors)
+
+original_mean <- original_df %>% 
+  summarize_if(is.numeric, mean)
+
+original_sd <- original_df %>% 
+  summarize_if(is.numeric, sd)
+
+
+predictors_norm <- global_predictors %>% 
+  mutate(
+    current_medium_bio_13 = (current_medium_bio_13 - original_mean$current_medium_bio_13) / original_sd$current_medium_bio_13,
+    current_medium_bio_5 = (current_medium_bio_5 - original_mean$current_medium_bio_5) / original_sd$current_medium_bio_5,
+    temp_trend = (temp_trend - original_mean$temp_trend) / original_sd$temp_trend,
+    temp_var = (temp_var - original_mean$temp_var) / temp_var,
+    precip_trend = (precip_trend - original_mean$precip_trend) / original_sd$precip_trend
+  ) 
+
+```
+
+
+Write the normalized predictors, `predictors_norm`, to a file. This might throw a GDAL error if you've already written it to file. Just delete the old one if you need to write a new version to file.  
+```{r, eval=FALSE}
+write_sf(predictors_norm, here("output", "spreadsheets", "normalized_predictors_gde.geojson"))
+```
+
+```{r, echo=FALSE}
+predictors_norm <- read_sf(here("output", "spreadsheets", "normalized_predictors_gde.geojson"),
+                           crs = "+proj=cea +lon_0=0 +lat_ts=30 +x_0=0 +y_0=0 +datum=WGS84 +ellps=WGS84 +units=m +no_defs")
+```
+
+
+Get posterior predictions
+```{r sample-post, eval=FALSE}
+# I could use a different predict function to just get the intervals, but eventually I want to make little density plots for interactive visualization, so I'm grabbing the posterior sample
+global_prediction <- posterior_predict(
+  model_top_5_nc,
+  newdata = predictors_norm,
+  iter = 1000,
+  seed = 1920
+)
+
+colnames(global_prediction) <- paste0("cell_", 1:ncol(global_prediction))
+```
+
+
+Write predictions to file, so we don't need to run it again
+```{r, eval=FALSE}
+write_csv(as_tibble(global_prediction), here("output", "spreadsheets", "global_posterior_predictions_gde.csv"))
+```
+
+```{r, echo=FALSE}
+global_prediction <- read_csv(here("output", "spreadsheets", "global_posterior_predictions_gde.csv"))
+```
+
+
+Get the median and highest posterior density intervals for mapping and evaluation.
+```{r}
+# need these to get the upper and lower HDI, since I don't know how to subset output within a summarize call
+upper_hdi <- function(x) {
+  u <- HDInterval::hdi(x)["upper"]
+  return(u)
+}
+
+lower_hdi <- function(x){
+  l <- HDInterval::hdi(x)["lower"]
+  return(l)
+}
+
+# I'm not good enough at regex to make this more succinct
+global_pred_intervals <- global_prediction %>% 
+  as_tibble() %>% 
+  summarize_all(list(median = median, upper = upper_hdi, lower = lower_hdi)) %>% 
+  pivot_longer(everything(),
+               names_to = c("remove", "cell_old", "summary_stat"),
+               names_sep = "_",
+               values_to = "value") %>% 
+  select(-remove) %>% 
+  pivot_wider(names_from = summary_stat, 
+              values_from = value) %>% 
+  mutate(range = upper - lower)
+
+map_sf <- bind_cols(global_predictors, global_pred_intervals) %>% 
+  select(-cell_old)
+```
+
+
+Write prediction intervals to file.  
+
+```{r, eval=FALSE}
+write_sf(map_sf, here("output", "spreadsheets", "global_pred_intervals_gde.geojson"))
+```
+
+```{r, echo=FALSE}
+map_sf <- read_sf(here("output", "spreadsheets", "global_pred_intervals_gde.geojson"), 
+                  crs = "+proj=cea +lon_0=0 +lat_ts=30 +x_0=0 +y_0=0 +datum=WGS84 +ellps=WGS84 +units=m +no_defs")
+```
+
+
+###### Median
+Make the map of the median. Doesn't look too terribly different from preliminary models, which is good. Definitely need to trim the layer by the country shape file and do some map tweaking.  
+
+```{r}
+ggplot() +
+  geom_sf(data = map_sf, aes(fill = median, color = median)) +
+  scale_fill_gradientn(colors = pal) +
+  scale_color_gradientn(colors = pal, guide = NULL) + 
+  geom_sf(data = world_base_map, fill = "transparent") +
+  labs(fill = "GDE") +
+  theme_minimal() +
+  labs(title = "Global map of genetic diversity evenness")
+       # ,
+       # caption = paste(str_wrap("This is a preliminary model and predictions are likely to change. In general, higher GDE = more diverse community. Some areas are missing due to missing data in the predictors that is currently being resolved."), collapse = "\n"))
+  
+```
+
+###### Range
+This is the range between the upper and lower 95% HPDI.  
+
+```{r}
+ggplot() +
+  geom_sf(data = map_sf, aes(fill = range, color = range)) +
+  scale_fill_gradientn(colors = pal) +
+  scale_color_gradientn(colors = pal, guide = NULL) + 
+  geom_sf(data = world_base_map, fill = "transparent") +
+  labs(fill = "GDE Range") +
+  theme_minimal() +
+  labs(title = "Prediction precision (upper 95% HPDI - lower 95% HPDI)")
+```
+
+
+## GDM
+Genetic Diversity Median  
+
+### Model selection
+
+#### Full model
+Let's try the model selection with a simple multiple regression model followed by incorporating spatial random fields with the final simplified model.  
+
+```{r, eval=FALSE}
+set.seed(1989999)
+
+model_mult_reg_gdm <- stan_glm(
+  sqrt_pi ~
+    current_medium_bio_13 +
+    current_medium_bio_14 +
+    current_medium_bio_15 +
+    current_medium_bio_2 +
+    current_medium_bio_5 +
+    ghh_medium_std_dev +
+    human_medium_gHM +
+    temp_trend +
+    temp_var + 
+    precip_trend +
+    precip_var,
+  data = new_stab_spatial,
+  prior = normal(location = 0, scale = 0.1),
+  prior_intercept = normal(location = 0, scale = 1),
+  family = gaussian(),
+  iter = 4000,
+  chains = 2,
+  cores = 2
+)
+```
+
+Write model to file  
+
+```{r, eval=FALSE}
+write_rds(model_mult_reg_gdm, here("output", "models", "mult_reg_gdm.rds"))
+```
+
+```{r, echo=FALSE}
+# read in model so we don't have to run it again
+model_mult_reg_gdm <- read_rds(here("output", "models", "mult_reg_gdm.rds"))
+```
+
+Get the response and posterior sample for posterior predictive checks  
+
+```{r}
+model_mult_reg_gdm_resp <- model_mult_reg_gdm$data$sqrt_pi
+model_mult_reg_gdm_post <- glmmfields::posterior_predict(model_mult_reg_gdm, iter = 1000)
+```
+
+Not accounting for spatial autocorrelation results in a posterior that more closely approximates the data.  
+
+```{r}
+ppc_dens_overlay(model_mult_reg_gdm_resp, model_mult_reg_gdm_post[1:50,])
+ppc_ecdf_overlay(model_mult_reg_gdm_resp, model_mult_reg_gdm_post[1:50,])
+ppc_boxplot(model_mult_reg_gdm_resp, model_mult_reg_gdm_post[sample(1000, 8),])
+```
+
+The center and spread are well-represented.  
+
+```{r}
+ppc_stat_2d(model_mult_reg_gdm_resp, model_mult_reg_gdm_post, stat = c("mean", "sd"))
+ppc_stat_2d(model_mult_reg_gdm_resp, model_mult_reg_gdm_post, stat = c("median", "IQR"))
+```
+
+Looks like precipitation trend, BIO 15 (Precipitation seasonality), and BIO 5 (Max temp of the warmest month) are the variables that stick out in the full model.  
+
+```{r}
+# remove the warmup 
+mult_reg_gdm_posteriors <- as.matrix(model_mult_reg_gdm)[2001:4000,]
+
+betas <- colnames(mult_reg_gdm_posteriors)[2:12]
+
+mcmc_intervals(mult_reg_gdm_posteriors, 
+           pars = betas,
+           prob = 0.50,
+           prob_outer = 0.90) +
+  geom_vline(xintercept = 0) +
+  ggtitle("50% and 90% CI intervals")
+
+mcmc_intervals(mult_reg_gdm_posteriors, 
+           pars = betas,
+           prob = 0.70,
+           prob_outer = 0.90) +
+  geom_vline(xintercept = 0) +
+  ggtitle("70% and 90% CI intervals")
+
+```
+
+
+Definitely unequal variance due to spatial autocorrelation.  
+
+```{r}
+df_resid <- tibble(resid_mult = residuals(model_mult_reg_gdm),
+                   fit_mult = fitted(model_mult_reg_gdm))
+
+
+ggplot(data = df_resid, aes(x = fit_mult, y = resid_mult)) + 
+  geom_point() +
+  geom_smooth() +
+  geom_hline(yintercept = 0)
+```
+
+#### Projective variable selection
+Running projective variable selection.  
+
+```{r, cache=TRUE}
+ref_mult_gdm <- get_refmodel(model_mult_reg_gdm)
+
+cv_mult_gdm <- cv_varsel(ref_mult_gdm, method = "forward")
+
+```
+
+
+Interesting! Precipitation seems to be coming out towards the top too. Unique of GDE  
+
+```{r}
+solution_terms(cv_mult_gdm)
+```
+
+
+Looks like 3 variables actually performs better than including more variables. They are the suspected variables- precipitation trend, BIO 5, and BIO 15.  
+
+```{r}
+plot(cv_mult_gdm, stats = c('elpd', 'rmse'))
+```
+
+
+```{r}
+# plot the validation results, this time relative to the full model
+plot(cv_mult_gdm, stats = c('elpd', 'rmse'), deltas = TRUE)
+```
+
+
+```{r}
+ # Visualise the three most relevant variables in the full model -->
+ mcmc_areas(as.matrix(ref_mult_gdm$fit),
+            pars = c(solution_terms(cv_mult_gdm)[1:3],
+                     "sigma")) 
+```
+
+### Random Fields GLMM
+Now let's do the full model!  
+
+```{r, eval=FALSE}
+model_top_3_gdm <-
+  glmmfields(
+  sqrt_pi ~
+    current_medium_bio_5 +
+    current_medium_bio_15 +
+    precip_trend,
+  data = new_stab_spatial,
+  family = gaussian(),
+  lat = "lat_scaled",
+  lon = "lon_scaled",
+  nknots = 20,
+  iter = 7000,
+  save_log_lik = TRUE,
+  chains = 4, 
+  estimate_df = TRUE,
+  covariance = "exponential",
+  # intercept can't move beyond -1 or 1, so a relatively small scale is justified.
+  prior_intercept = student_t(
+    df = 1000,
+    location = 0,
+    scale = 1
+  ),
+  # betas are going to be very small too (definitely under 0.05), because the predictors are normalized and centered, and the response is bounded between zero and one (our data is between 0.35ish and 0.65ish, and Hill numbers wouldn't realistically reach the extremes). So a sigma of 0.1 is weakly regularizing and a normal prior is appropriate. 
+  prior_beta = student_t(1000, 0, 0.1),
+  prior_sigma = half_t(1000, 0, 1),
+  prior_gp_theta = half_t(1000, 0, 5),
+  prior_gp_sigma = half_t(1000, 0, 1),
+  control = list(adapt_delta = 0.99,
+                 max_treedepth = 15),
+  seed = 2020,
+  cores = 2
+)
+
+
+```
+
+Write the model to file.  
+
+```{r, eval=FALSE}
+write_rds(model_top_3_gdm, here("output", "models", "glmm_top_3_gdm.rds"))
+```
+
+
+```{r, echo=FALSE}
+# read in model so we don't have to run it again
+model_top_3_gdm <- read_rds(here("output", "models", "glmm_top_3_gdm.rds"))
+```
+
+
+#### Response posterior
+The posterior is more concentrated towards the middle than the non-spatial model. Similar to what we've seen in the Hill 1 model. This isn't bimodal, which corresponds to the lack of a difference in GDM above and below the freezeline.  
+
+```{r}
+model_top_3_gdm_resp <- model_top_3_gdm$data$sqrt_pi
+model_top_3_gdm_post <- glmmfields::posterior_predict(model_top_3_gdm, iter = 1000)
+
+ppc_dens_overlay(model_top_3_gdm_resp, model_top_3_gdm_post[1:50,])
+ppc_ecdf_overlay(model_top_3_gdm_resp, model_top_3_gdm_post[1:50,])
+ppc_boxplot(model_top_3_gdm_resp, model_top_3_gdm_post[sample(1000, 8),])
+```
+
+#### Residual vs fit
+Check residuals. Nice, not too bad.  
+
+```{r}
+plot(model_top_3_gdm, type = "residual-vs-fitted")
+```
+
+#### Beta posteriors
+```{r}
+# remove the warmup 
+top_3_gdm_posteriors <- as.matrix(model_top_3_gdm$model)[3501:7000,]
+
+betas <- c("B[2]", "B[3]", "B[4]")
+
+mcmc_intervals(top_3_gdm_posteriors, 
+           pars = betas,
+           prob = 0.50,
+           prob_outer = 0.90) +
+  geom_vline(xintercept = 0) +
+  ggtitle("50% and 90% CI intervals")
+
+mcmc_intervals(top_3_gdm_posteriors, 
+           pars = betas,
+           prob = 0.70,
+           prob_outer = 0.95) +
+  geom_vline(xintercept = 0) +
+  ggtitle("70% and 95% CI intervals")
+
+```
+
+#### Bayes R^2
+Function from Gelman et al. 2018 to calculate a bayes version of the R2 value. I modified it to account for the Gaussian Process variance.  
+
+```{r}
+r2_df_gdm <- tibble(
+  r2_top_3_gdm =  bayes_R2_glmmfields(model_top_3_gdm)[,1]
+) %>% 
+  pivot_longer(cols = everything(),
+               names_to = "model",
+               values_to = "post")
+
+ggplot(data = r2_df_gdm, aes(x = post, color = model)) +
+  geom_density() +
+  labs(title = paste0("Median = ", round(median(r2_df_gdm$post), 3)))
+
+```
+
+
+#### Publication figs
+
+Let's take a look at this with density plots.  
+Get posteriors for each model  
+
+```{r}
+response_posts_top_3_gdm <- sample_response_posterior(model_top_3_gdm, response = "sqrt_pi")
+
+param_posts_top_3_gdm <- tidy_post(model_top_3_gdm)
+```
+
+##### Response posterior
+
+Interesting, there's a large bump in the posterior  
+
+```{r}
+gdm_frz_line <- new_stab_spatial %>% 
+  group_by(min_temp) %>% 
+  summarize(gdm_median = median(sqrt_pi)) %>% 
+  pivot_wider(names_from = min_temp, values_from = gdm_median)
+
+ggplot() +
+  geom_density(data = response_posts_top_3_gdm, 
+               aes(x = response_post, 
+                   group = draw), 
+               color = alpha("darkgray", 0.1)) +
+  geom_density(data = new_stab_spatial,
+               aes(x = sqrt_pi),
+               color = "darkgreen") +
+  labs(x = "GDM posterior",
+       y = "Density") +
+  theme_bw()
+```
+
+##### Beta posteriors
+The dot and lines below each density plot indicate the median, 80% highest posterior density, and 95% highest posterior density, respectively.  
+
+```{r, cache=TRUE}
+hpd_top_3_gdm <- param_posts_top_3_gdm$B %>% 
+  pivot_longer(everything(), names_to = "beta", values_to = "posterior") %>% 
+  group_by(beta) %>% 
+  summarize(
+    hpd_95_hi = HDInterval::hdi(posterior, credMass = 0.95)["upper"],
+    hpd_95_low = HDInterval::hdi(posterior, credMass = 0.95)["lower"],
+    hpd_90_hi = HDInterval::hdi(posterior, credMass = 0.90)["upper"],
+    hpd_90_low = HDInterval::hdi(posterior, credMass = 0.90)["lower"],
+    hpd_80_hi = HDInterval::hdi(posterior, credMass = 0.80)["upper"],
+    hpd_80_low = HDInterval::hdi(posterior, credMass = 0.80)["lower"],
+    hpd_70_hi = HDInterval::hdi(posterior, credMass = 0.70)["upper"],
+    hpd_70_low = HDInterval::hdi(posterior, credMass = 0.70)["lower"],
+    hpd_50_hi = HDInterval::hdi(posterior, credMass = 0.50)["upper"],
+    hpd_50_low = HDInterval::hdi(posterior, credMass = 0.50)["lower"]
+    )
+
+
+param_posts_top_3_gdm$B %>% 
+  select(-intercept) %>% 
+  pivot_longer(everything(), 
+               names_to = "parameter",
+               values_to = "posterior") %>% 
+  mutate(parameter = case_when(
+    str_detect(parameter, "bio_5") ~ "Max. Temp. Warmest Month",
+    str_detect(parameter, "bio_15") ~ "Precip. Seasonality",
+    parameter == "precip_trend" ~ "Precip. Trend"
+  ),
+    parameter = fct_reorder(parameter, abs(posterior))) %>% 
+  ggplot(aes(x = posterior, y = parameter)) + 
+  geom_vline(xintercept = 0, linetype = "dashed", color = "darkgrey", alpha = 0.7) +
+  stat_halfeye(.width = c(0.70, 0.95), fill = "darkgreen", alpha = 0.9) +
+  labs(x = "Posterior", 
+       y = NULL) +
+  theme_bw()
+```
+
+##### Bayes R^2
+
+R^2 is lower than with GDE.  
+
+```{r}
+# get 95% highest 
+hpd_95_gdm <- HDInterval::hdi(r2_df_gdm$post, credMass = 0.95)
+
+ggplot(data = r2_df_gdm, aes(x = post)) +
+  geom_density(fill = "darkgreen", alpha = 0.9) +
+  labs(title = paste0("Median R<sup>2</sup> = ",
+                                round(median(r2_df_gdm$post), 3),
+                      ". 95% HPDI = [",
+                      round(hpd_95_gdm["lower"], 3),
+                      ", ",
+                      round(hpd_95_gdm["upper"], 3),
+                      "]"),
+       x = "Posterior",
+       y = NULL) + 
+  theme_bw() +
+  theme(plot.title = ggtext::element_markdown())
+
+```
+
+##### Maps
+Global maps of genetic diversity median.  
+
+First, I'm using the model to predict across available terrestrial climate data. I am grabbing the posterior distribution for each predicted cell, and a summary of it (median, 95% highest posterior density interval, range: upper - lower HPDI).  
+
+```{r}
+predictors_gdm <- names(as_tibble(model_top_3_gdm$X))[-1]
+
+# Read in predictor rasters
+rast_list_medium <- list.files(here("data", "climate_agg"),
+                        pattern = "medium",
+                        full.names = TRUE) 
+
+rast_list_pred_gdm <- rast_list_medium[str_detect(rast_list_medium, 
+                                              paste(predictors_gdm, 
+                                                    collapse = "|"))]
+
+rasters_full_medium_gdm <- raster::stack(rast_list_pred_gdm)
+crs(rasters_full_medium_gdm) <- "+proj=cea +lon_0=0 +lat_ts=30 +x_0=0 +y_0=0 +datum=WGS84 +ellps=WGS84 +units=m +no_defs"
+
+# get cell names from the raster in case we need to pair with old rasters down the line
+cells_gdm <- rasters_full_medium_gdm %>% 
+  as.data.frame() %>% 
+  na.omit() %>% 
+  rownames()
+
+# read in the stability geojson files
+stability_sf <- read_sf(here("data", "climate_poly", "new_stability.geojson"), 
+                        crs = "+proj=cea +lon_0=0 +lat_ts=30 +x_0=0 +y_0=0 +datum=WGS84 +ellps=WGS84 +units=m +no_defs")
+
+
+# convert to data frame and add in the stability data 
+global_predictors_gdm <- rasters_full_medium_gdm %>%
+  rasterToPolygons() %>%
+  st_as_sf() %>%
+  st_join(stability_sf, join = st_equals) %>%
+  mutate(cell = cells) %>%
+  rename(temp_trend = GlobalExtreme_tsTrendExt,
+         temp_var = GlobalExtreme_tsVarExt,
+         precip_trend = GlobalExtreme_prTrendExt) %>% 
+  select(-GlobalExtreme_prVarExt, -temp_trend, -temp_var)
+        
+
+global_centroids_gdm <- global_predictors_gdm %>% 
+  st_centroid(of_largest_polygon = TRUE) %>% 
+  st_coordinates()
+
+global_predictors_gdm <- global_predictors_gdm %>% 
+  mutate(lon_scaled = global_centroids[,"X"] * 0.000001,
+         lat_scaled = global_centroids[,"Y"] * 0.000001)
+
+# get the mean and sd of the original data to convert the standardized data back to it's original values
+original_df_gdm <- new_stab_spatial %>% 
+  select(cell) %>% 
+  mutate(cell = as.character(cell)) %>% 
+  left_join(global_predictors_gdm)
+
+original_mean_gdm <- original_df_gdm %>% 
+  summarize_if(is.numeric, mean)
+
+original_sd_gdm <- original_df_gdm %>% 
+  summarize_if(is.numeric, sd)
+
+
+predictors_norm_gdm <- global_predictors_gdm %>% 
+  mutate(
+    current_medium_bio_15 = (current_medium_bio_15 - original_mean_gdm$current_medium_bio_15) / original_sd_gdm$current_medium_bio_15,
+    current_medium_bio_5 = (current_medium_bio_5 - original_mean_gdm$current_medium_bio_5) / original_sd_gdm$current_medium_bio_5,
+    precip_trend = (precip_trend - original_mean_gdm$precip_trend) / original_sd_gdm$precip_trend
+  ) %>% 
+  # there's one NA in current_medium_bio_15
+  filter(!is.na(current_medium_bio_15))
+
+```
+
+Write the normalized predictors, `predictors_norm_gdm`, to a file. This might throw a GDAL error if you've already written it to file. Just delete the old one if you need to write a new version to file.  
+
+```{r, eval=FALSE}
+write_sf(predictors_norm_gdm, here("output", "spreadsheets", "normalized_predictors_gdm.geojson"))
+```
+
+```{r, echo=FALSE}
+predictors_norm_gdm <- read_sf(here("output", "spreadsheets", "normalized_predictors_gdm.geojson"),
+                               crs = "+proj=cea +lon_0=0 +lat_ts=30 +x_0=0 +y_0=0 +datum=WGS84 +ellps=WGS84 +units=m +no_defs")
+```
+
+
+Obtain posterior predictions  
+
+```{r, eval=FALSE}
+# I could use a different predict function to just get the intervals, but eventually I want to make little density plots for interactive visualization, so I'm grabbing the posterior sample
+global_prediction_gdm <- posterior_predict(
+  model_top_3_gdm,
+  newdata = predictors_norm_gdm,
+  iter = 1000,
+  seed = 180
+)
+
+colnames(global_prediction_gdm) <- paste0("cell_", 1:ncol(global_prediction_gdm))
+```
+
+Write predictions to file, so we don't need to run it again  
+
+```{r, eval=FALSE}
+write_csv(as_tibble(global_prediction_gdm), here("output", "spreadsheets", "global_posterior_predictions_gdm.csv"))
+```
+
+```{r, echo=FALSE}
+global_prediction_gdm <- read_csv(here("output", "spreadsheets", "global_posterior_predictions_gdm.csv"))
+```
+
+
+Get the 95% upper and lower highest posterior density intervals for the posterior.  
+
+```{r}
+# need these to get the upper and lower HDI, since I don't know how to subset output within a summarize call
+upper_hdi <- function(x) {
+  u <- HDInterval::hdi(x)["upper"]
+  return(u)
+}
+
+lower_hdi <- function(x){
+  l <- HDInterval::hdi(x)["lower"]
+  return(l)
+}
+
+# I'm not good enough at regex to make this more succinct
+global_pred_intervals_gdm <- global_prediction_gdm %>% 
+  as_tibble() %>% 
+  summarize_all(list(median = median, upper = upper_hdi, lower = lower_hdi)) %>% 
+  pivot_longer(everything(),
+               names_to = c("remove", "cell_old", "summary_stat"),
+               names_sep = "_",
+               values_to = "value") %>% 
+  select(-remove) %>% 
+  pivot_wider(names_from = summary_stat, 
+              values_from = value) %>% 
+  mutate(range = upper - lower,
+         cell = predictors_norm_gdm$cell)
+
+map_sf_gdm <- left_join(global_predictors_gdm, 
+                        global_pred_intervals_gdm, 
+                        by = "cell") %>% 
+  select(-cell_old)
+
+```
+
+Write the global prediction intervals to a file.
+```{r, eval=FALSE}
+write_sf(map_sf_gdm, here("output", "spreadsheets", "global_pred_intervals_gdm.geojson"))
+```
+
+```{r, echo=FALSE}
+map_sf_gdm <- read_sf(here("output", "spreadsheets", "global_pred_intervals_gdm.geojson"),
+                      crs = "+proj=cea +lon_0=0 +lat_ts=30 +x_0=0 +y_0=0 +datum=WGS84 +ellps=WGS84 +units=m +no_defs")
+```
+
+
+###### Median
+Make the map of the median. Doesn't look too terribly different from preliminary models, which is good.  
+
+```{r}
+ggplot() +
+  geom_sf(data = map_sf_gdm, aes(fill = median, color = median)) +
+  scale_fill_gradientn(colors = pal) +
+  scale_color_gradientn(colors = pal, guide = NULL) + 
+  geom_sf(data = world_base_map, fill = "transparent") +
+  labs(fill = "GDM") +
+  theme_minimal() +
+  labs(title = "Global map of genetic diversity median")
+  
+```
+
+
+###### Range
+This is the range between the upper and lower 95% HPDI.  
+
+```{r}
+ggplot() +
+  geom_sf(data = map_sf_gdm, aes(fill = range, color = range)) +
+  scale_fill_gradientn(colors = pal) +
+  scale_color_gradientn(colors = pal, guide = NULL) + 
+  geom_sf(data = world_base_map, fill = "transparent") +
+  labs(fill = "GDM Range") +
+  theme_minimal() +
+  labs(title = "Prediction precision (upper 95% HPDI - lower 95% HPDI)")
+```
+
+## Responses
+I'm making maps of GDE and GDM, using only the original data (not projected).  
+
+First converting the data to an `sf` object for plotting.  
+
+```{r}
+template_sf <- raster(here("data", "templates", "template_medium.tif")) %>% 
+  rasterToPolygons(na.rm = FALSE) %>% 
+  st_as_sf()
+
+
+new_stab_sf <- st_as_sf(new_stab_spatial, 
+                        coords = c("X","Y"),
+                        crs = "+proj=cea +lon_0=0 +lat_ts=30 +x_0=0 +y_0=0 +datum=WGS84 +ellps=WGS84 +units=m +no_defs")
+
+response_sf <- st_join(
+  template_sf, 
+  new_stab_sf %>% select(sqrt_pi, hill_1), 
+  join = st_contains,
+  left = TRUE
+) %>% 
+  filter(!is.na(hill_1))
+```
+
+### GDE
+
+```{r}
+ggplot() +
+  geom_sf(data = response_sf, aes(fill = hill_1, color = hill_1)) +
+  scale_fill_gradientn(colors = pal) +
+  scale_color_gradientn(colors = pal, guide = NULL) + 
+  geom_sf(data = world_base_map, fill = "transparent") +
+  labs(fill = "GDE") +
+  theme_minimal() +
+  labs(title = "Observed GDE")
+```
+
+### GDM
+
+```{r}
+ggplot() +
+  geom_sf(data = response_sf, aes(fill = sqrt_pi, color = sqrt_pi)) +
+  scale_fill_gradientn(colors = pal) +
+  scale_color_gradientn(colors = pal, guide = NULL) + 
+  geom_sf(data = world_base_map, fill = "transparent") +
+  labs(fill = "GDM") +
+  theme_minimal() +
+  labs(title = "Observed GDM")
+```
+
+## Other trends
+
+Here I'm visualizing other trends in the observed data, not included in the model.  
+
+### Latitude
+
+Woah! It looks like with the new model, there are definitely latitudinal trends in genetic diversity. The trend is definitely stronger in GDE vs GDM. From a linear model with an exponential component (GDE ~ Latitude + I(Latitude^2)), P < 0.001, R^2 = 0.218 with GDE, but the trend is insignificant for GDM (P = 0.253).  
+
+#### GDE
+```{r}
+ggplot() +
+  geom_point(data = map_sf, aes(x = lat_scaled, y = median), color = "darkgray", alpha = 0.4) +
+  stat_smooth(data = map_sf, 
+              aes(x = lat_scaled, y = median), 
+              method = "lm", 
+              formula = y ~ x + I(x^2),
+              se = FALSE,
+              color = "black") +
+  geom_point(data = new_stab_sf, aes(x = lat_scaled, y = hill_1), color = "darkgreen") +
+  stat_smooth(data = new_stab_sf, 
+              aes(x = lat_scaled, y = hill_1), 
+              method = "lm", 
+              formula = y ~ x + I(x^2),
+              se = FALSE,
+              color = "darkgreen") +
+  labs(x = "Latitude", y = "GDE",
+       title = "Observed and predicted GDE across latitude",
+       caption = str_wrap("Dark green points and trendline indicates observed GDE and gray points with black trendline indicate GDE predicted across the globe")) +
+  theme_minimal() 
+  
+```
+
+#### GDM
+```{r}
+ggplot() +
+  geom_point(data = map_sf_gdm, aes(x = lat_scaled, y = median), color = "darkgray", alpha = 0.4) +
+  stat_smooth(data = map_sf_gdm, 
+              aes(x = lat_scaled, y = median), 
+              method = "lm", formula = y ~ x + I(x^2),
+              color = "black", 
+              se = FALSE) +
+  geom_point(data = new_stab_sf, aes(x = lat_scaled, y = sqrt_pi), color = "darkgreen") +
+  stat_smooth(data = new_stab_sf,
+              aes(x = lat_scaled, y = sqrt_pi), 
+              method = "lm", formula = y ~ x + I(x^2),
+              color = "darkgreen", 
+              se = FALSE) +
+  labs(x = "Latitude", y = "GDM",
+       title = "Observed and predicted GDM across latitude",
+       caption = str_wrap("Dark green points and trendline indicates observed GDM and gray points with black trendline indicate predicted GDM")) +
+  theme_minimal() 
+  
+```
+
+
+## Predictors
+I'm making maps of all predictors that made it to the final model before performing model selection:  
+current_medium_bio_13, 
+current_medium_bio_14, 
+current_medium_bio_15, 
+current_medium_bio_2, 
+current_medium_bio_5, 
+ghh_medium_std_dev, 
+human_medium_gHM, 
+temp_trend, 
+temp_var,  
+precip_trend, 
+precip_var  
+
+First, I need to wrangle shape files of the predictors.  
+
+```{r}
+predictors_all <- c("hill_1", 
+                    "sqrt_pi", 
+                    "current_medium_bio_13", 
+                    "current_medium_bio_14", 
+                    "current_medium_bio_15", 
+                    "current_medium_bio_2", 
+                    "current_medium_bio_5", 
+                    "ghh_medium_std_dev", 
+                    "human_medium_gHM", 
+                    "temp_trend", 
+                    "temp_var", 
+                    "precip_trend", 
+                    "precip_var")
+# Read in predictor rasters
+rast_list_medium <- list.files(here("data", "climate_agg"),
+                        pattern = "medium",
+                        full.names = TRUE) 
+
+rast_list_pred_all <- rast_list_medium[str_detect(rast_list_medium, 
+                                              paste(predictors_all, 
+                                                    collapse = "|"))]
+
+rasters_full_medium_all <- raster::stack(rast_list_pred_all)
+crs(rasters_full_medium_all) <- "+proj=cea +lon_0=0 +lat_ts=30 +x_0=0 +y_0=0 +datum=WGS84 +ellps=WGS84 +units=m +no_defs"
+
+# convert to data frame 
+global_predictors_sf <- rasters_full_medium_all %>%
+  rasterToPolygons() %>%
+  st_as_sf() 
+
+
+# read in the stability geojson files. keeping these separate because they contain ocean values too
+stability_sf <- read_sf(here("data", "climate_poly", "new_stability.geojson"), 
+                        crs = "+proj=cea +lon_0=0 +lat_ts=30 +x_0=0 +y_0=0 +datum=WGS84 +ellps=WGS84 +units=m +no_defs") %>% 
+  rename(temp_trend = GlobalExtreme_tsTrendExt,
+         temp_var = GlobalExtreme_tsVarExt,
+         precip_trend = GlobalExtreme_prTrendExt,
+         precip_var = GlobalExtreme_prVarExt)
+
+```
+
+
+
+Then, I'm plotting the stability metrics.   
+
+```{r}
+temp_trend_map <- ggplot() +
+  geom_sf(data = stability_sf, aes(color = temp_trend, fill = temp_trend)) +
+  scale_fill_gradientn(colors = pal) +
+  scale_color_gradientn(colors = pal,
+                        guide = NULL) + 
+  geom_sf(data = world_base_map, fill = "transparent") +
+  labs(fill = "",
+       title = "Temperature trend") +
+  theme_minimal() 
+
+temp_var_map <- ggplot() +
+  geom_sf(data = stability_sf, aes(color = temp_var, fill = temp_var)) +
+  scale_fill_gradientn(colors = pal) +
+  scale_color_gradientn(colors = pal, guide = NULL) + 
+  geom_sf(data = world_base_map, fill = "transparent") +
+  labs(fill = "",
+       title = "Temperature variability") +
+  theme_minimal() 
+
+
+precip_trend_map <- ggplot() +
+  geom_sf(data = stability_sf, aes(color = precip_trend, fill = precip_trend)) +
+  scale_fill_gradientn(colors = pal) +
+  scale_color_gradientn(colors = pal, guide = NULL) + 
+  geom_sf(data = world_base_map, fill = "transparent") +
+  labs(fill = "",
+       title = "Precipitation trend") +
+  theme_minimal() 
+
+precip_var_map <- ggplot() +
+  geom_sf(data = stability_sf, aes(color = precip_var, fill = precip_var)) +
+  scale_fill_gradientn(colors = pal) +
+  scale_color_gradientn(colors = pal, guide = NULL) + 
+  geom_sf(data = world_base_map, fill = "transparent") +
+  labs(fill = "",
+       title = "Precipitation variability") +
+  theme_minimal() 
+
+(temp_trend_map + temp_var_map) / (precip_trend_map + precip_var_map)
+```
+
+Next, I'm plotting the bioclim predictors.  
+
+```{r}
+bio_2_map <- ggplot() +
+  geom_sf(data = global_predictors_sf, aes(color = current_medium_bio_2, fill = current_medium_bio_2)) +
+  scale_fill_gradientn(colors = pal) +
+  scale_color_gradientn(colors = pal, guide = NULL) + 
+  geom_sf(data = world_base_map, fill = "transparent") +
+  labs(fill = "",
+       title = "BIO2: Mean diurnal temperature range (˚C * 10)") +
+  theme_minimal() 
+
+bio_5_map <- ggplot() +
+  geom_sf(data = global_predictors_sf, aes(color = current_medium_bio_5, fill = current_medium_bio_5)) +
+  scale_fill_gradientn(colors = pal) +
+  scale_color_gradientn(colors = pal, guide = NULL) + 
+  geom_sf(data = world_base_map, fill = "transparent") +
+  labs(fill = "",
+       title = "BIO5: Maximum temperature of the warmest month (˚C * 10)") +
+  theme_minimal() 
+
+bio_13_map <- ggplot() +
+  geom_sf(data = global_predictors_sf, aes(color = current_medium_bio_13 + 0.001, fill = current_medium_bio_13 + 0.001)) +
+  scale_fill_gradientn(colors = pal, trans = "log10") +
+  scale_color_gradientn(colors = pal, trans = "log10", guide = NULL) + 
+  geom_sf(data = world_base_map, fill = "transparent") +
+  labs(fill = "",
+       title = "BIO13: Precipitation of the wettest month (mm)",
+       caption = str_wrap("The color scale is log10-transformed to preserve patterns away from the extremes. Additionally, a small number was added (0.001) to allow for cells with 0 mm of precipitation during their wettest month to be plotted.")) +
+  theme_minimal() 
+
+bio_14_map <- ggplot() +
+  geom_sf(data = global_predictors_sf, aes(color = current_medium_bio_14 + 0.001, fill = current_medium_bio_14 + 0.001)) +
+  scale_fill_gradientn(colors = pal, trans = "log10") +
+  scale_color_gradientn(colors = pal, trans = "log10", guide = NULL) + 
+  geom_sf(data = world_base_map, fill = "transparent") +
+  labs(fill = "",
+       title = "BIO14: Precipitation of the driest month (mm)",
+       caption = str_wrap("The color scale is log10-transformed to preserve patterns away from the extremes. Additionally, a small number was added (0.001) to allow for cells with 0 mm of precipitation during their driest month to be plotted.")) +
+  theme_minimal() 
+
+bio_15_map <- ggplot() +
+  geom_sf(data = global_predictors_sf, aes(color = current_medium_bio_15, fill = current_medium_bio_15)) +
+  scale_fill_gradientn(colors = pal, trans = "log10") +
+  scale_color_gradientn(colors = pal, trans = "log10", guide = NULL) + 
+  geom_sf(data = world_base_map, fill = "transparent") +
+  labs(fill = "",
+       title = "BIO15: Precipitation seasonality") +
+  theme_minimal() 
+
+bio_2_map + bio_5_map + bio_13_map + bio_14_map + bio_15_map + plot_layout(ncol = 2)
+```
+
+## MESS maps
+Multivariate environmental similarity surface (MESS) plots. These will help determine areas where environmental space falls outside the range used in our model.  
+
+I need to resample the stability rasters to use in the MESS plots. This is a function I used in `step_0_aggregate-rasters`.  
+
+```{r}
+# function to resample rasters to any equal area grid of the three resolutions we're considering.
+
+
+# crs: define the crs you want to project to. It must be an equal area projection. The default crs is behrmann equal area. 
+# x: a raster or raster stack
+# km: km resolution you want (area will be km x km)
+# is_categorical: if is_categorical is true, using "ngb" interpolation
+resample_equal_area <- function(x, 
+                                crs = "+proj=cea +lon_0=0 +lat_ts=30 +x_0=0 +y_0=0 +datum=WGS84 +ellps=WGS84 +units=m +no_defs", 
+                                km,
+                                is_categorical = FALSE) {
+  
+  # project raster to new coordinate system (this has no values- we put values back in later)
+  x_ext <- raster::projectExtent(x, crs)
+  
+  # make the resolution square since we're interested in an equal area projection
+  raster::res(x_ext) <- raster::xres(x_ext)
+  
+  # add original values to our projection. We can't take shortcuts like doing this instead of doing projectExtent first because it removes cells at the extreme latitudes.
+  x_repro <- raster::projectRaster(x, x_ext)
+  
+  if (km == 96.5) {
+      end_raster = template_high
+  } else if (km == 193) {
+      end_raster = template_medium
+  } else if (km == 385.9) {
+      end_raster = template_low
+  } else stop("Incorrect resolution specification. Must be either 96.5 or 193")
+  
+  # resample our raster of interest to the beginning raster  
+  if (is_categorical) {
+      m <- "ngb"
+  } else m <- "bilinear"
+  
+  
+  x_resampled <- raster::resample(x_repro, end_raster, method = m) 
+
+  
+  return(x_resampled)
+}
+```
+
+
+Get a raster stack of all of the predictors.  
+
+```{r, eval=FALSE}
+stability_raster_files <- list.files(
+  here("data", "climate_agg"), 
+  pattern = "Global",
+  full.names = TRUE
+  )
+
+template_medium <- raster(here("data", "templates", "template_medium.tif"))
+
+stability_rasters <- 
+  stack(stability_raster_files) %>% 
+  resample_equal_area(km = 193)
+
+# rename stability rasters to those used in the model
+names(stability_rasters) <- c("precip_trend", "precip_var", "temp_trend", "temp_var")
+
+# add everything together
+rasters_full_medium_stability <- stack(rasters_full_medium_all,
+                                       stability_rasters)
+
+```
+
+### MESS GDE
+
+Run the MESS analysis for the GDE variables and write to file. You need the `predictors_norm` data frame
+
+```{r, eval=FALSE}
+predictors_norm <- read_sf(here("output", "spreadsheets", "normalized_predictors_gde.geojson"),
+                           crs = "+proj=cea +lon_0=0 +lat_ts=30 +x_0=0 +y_0=0 +datum=WGS84 +ellps=WGS84 +units=m +no_defs")
+
+spdf_gde <- as_Spatial(predictors_norm %>%  select(-cell, -lon_scaled, -lat_scaled))
+
+rasters_gde <- vector(mode = "list", length = ncol(spdf_gde))
+
+for (i in 1:ncol(spdf_gde)) {
+  r <- rasterize(spdf_gde[i], template_medium, field = names(spdf_gde[i]))
+  rasters_gde[[i]] <- r
+  names(rasters_gde[[i]]) <- names(spdf_gde[i])
+}
+
+rasters_gde <- stack(rasters_gde)
+
+
+# filter to the df used for modeling
+new_stab_gde <- new_stab_spatial %>% 
+  select(
+    all_of(names(rasters_gde))
+    )
+
+mess_analysis_gde <- dismo::mess(x = rasters_gde, v = as.matrix(new_stab_gde))
+```
+
+
+Write the mess raster to a file.  
+
+```{r, eval=FALSE}
+writeRaster(mess_analysis_gde, here("output", "rasters", "mess_gde.tif"))
+```
+
+```{r, echo=FALSE}
+mess_analysis_gde <- raster(here("output", "rasters", "mess_gde.tif"))
+
+# filter to the df used for modeling
+new_stab_gde <- new_stab_spatial %>% 
+  select(
+    all_of(colnames(model_top_5_nc$X)[-1])
+    )
+```
+
+Plot the MESS map for GDE.  
+
+```{r}
+mess_gde_sf <- mess_analysis_gde %>% 
+  rasterToPolygons() %>% 
+  st_as_sf() %>% 
+  mutate(mess_gde = na_if(mess_gde, "Inf"))
+
+ggplot() +
+  geom_sf(data = mess_gde_sf, aes(color = mess_gde, fill = mess_gde)) +
+  scale_color_gradient2(low = "#d7191c", 
+                       mid = "#f7f7f7", 
+                       high = "#2c7bb6",
+                       na.value = "transparent",
+                       guide = FALSE) +
+  scale_fill_gradient2(low = "#d7191c", 
+                       mid = "#f7f7f7", 
+                       high = "#2c7bb6",
+                       na.value = "transparent") +
+  geom_sf(data = world_base_map, fill = "transparent") +
+  labs(fill = "",
+       title = "Multivariate environmental similarity surface (GDE)",
+       caption = str_wrap("Values lower than zero indicate non-analogous environment relative to the training data.")) +
+  theme_minimal() 
+  
+```
+
+#### Predictor distributions GDE
+
+To supplement the MESS map, I'm including density plots that show the distribution of the training data vs the distribution of the global data. I am showing the normalized values, since they are what we used for training and prediction.  
+
+It looks like the most egregious deviations fall in Bioclim 5 and temperature variability. There are tails that we don't capture.  
+
+```{r}
+pred_dist_df_gde <- predictors_norm %>% 
+  select(-lat_scaled, -lon_scaled, -cell) %>% 
+  mutate(dataset = "global") %>% 
+  bind_rows(new_stab_gde %>% mutate(dataset = "model")) %>% 
+  pivot_longer(cols = -c(dataset, geometry), 
+               names_to = "predictor", 
+               values_to = "value")
+
+pred_dist_df_gde %>%
+  ggplot(aes(x = value, color = dataset)) +
+  geom_density() +
+  scale_color_manual(values = c("darkgray", "darkgreen")) +
+  facet_wrap(~predictor) +
+  theme_minimal()
+```
+
+
+
+### MESS GDM
+
+Run the MESS analysis for the GDE variables and write to file.  
+
+```{r, eval=FALSE}
+predictors_norm_gdm <- read_sf(here("output", "spreadsheets", "normalized_predictors_gdm.geojson"),
+                           crs = "+proj=cea +lon_0=0 +lat_ts=30 +x_0=0 +y_0=0 +datum=WGS84 +ellps=WGS84 +units=m +no_defs")
+
+spdf_gdm <- as_Spatial(predictors_norm_gdm %>%  select(-cell, -lon_scaled, -lat_scaled))
+
+rasters_gdm <- vector(mode = "list", length = ncol(spdf_gdm))
+
+for (i in 1:ncol(spdf_gdm)) {
+  r <- rasterize(spdf_gdm[i], template_medium, field = names(spdf_gdm[i]))
+  rasters_gdm[[i]] <- r
+  names(rasters_gdm[[i]]) <- names(spdf_gdm[i])
+}
+
+rasters_gdm <- stack(rasters_gdm)
+
+
+# filter to the df used for modeling
+new_stab_gdm <- new_stab_spatial %>% 
+  select(
+    all_of(names(rasters_gdm))
+    )
+
+mess_analysis_gdm <- dismo::mess(x = rasters_gdm, v = as.matrix(new_stab_gdm))
+```
+
+
+Write the mess raster to a file.
+```{r, eval=FALSE}
+writeRaster(mess_analysis_gdm, here("output", "rasters", "mess_gdm.tif"))
+```
+
+```{r, echo=FALSE}
+mess_analysis_gdm <- raster(here("output", "rasters", "mess_gdm.tif"))
+
+# filter to the df used for modeling
+new_stab_gdm <- new_stab_spatial %>% 
+  select(
+    all_of(colnames(model_top_3_gdm)[-1])
+    )
+```
+
+Plot the MESS map for GDE.  
+
+```{r}
+mess_gdm_sf <- mess_analysis_gdm %>% 
+  rasterToPolygons() %>% 
+  st_as_sf() %>% 
+  mutate(mess_gdm = na_if(mess_gdm, "Inf"))
+
+ggplot() +
+  geom_sf(data = mess_gdm_sf, aes(color = mess_gdm, fill = mess_gdm)) +
+  scale_color_gradient2(low = "#d7191c", 
+                       mid = "#f7f7f7", 
+                       high = "#2c7bb6",
+                       na.value = "transparent",
+                       guide = FALSE) +
+  scale_fill_gradient2(low = "#d7191c", 
+                       mid = "#f7f7f7", 
+                       high = "#2c7bb6",
+                       na.value = "transparent") +
+  geom_sf(data = world_base_map, fill = "transparent") +
+  labs(fill = "",
+       title = "Multivariate environmental similarity surface (GDM)",
+       caption = str_wrap("Values lower than zero indicate non-analogous environment relative to the training data.")) +
+  theme_minimal() 
+  
+```
+
+#### Predictor distributions GDM
+
+To supplement the MESS map, I'm including density plots that show the distribution of the training data vs the distribution of the global data. I am showing the normalized values, since they are what we used for training and prediction.  
+
+It looks like the most egregious deviations fall in Bioclim 5 and Bioclim 15. There are tails that we don't capture.  
+
+```{r warning=FALSE, message=FALSE}
+pred_dist_df_gdm <- predictors_norm_gdm %>% 
+  select(-lat_scaled, -lon_scaled, -cell) %>% 
+  mutate(dataset = "global") %>% 
+  bind_rows(new_stab_gdm %>% mutate(dataset = "model")) %>% 
+  pivot_longer(cols = -c(dataset, geometry), 
+               names_to = "predictor", 
+               values_to = "value")
+
+pred_dist_df_gdm %>%
+  ggplot(aes(x = value, color = dataset)) +
+  geom_density() +
+  scale_color_manual(values = c("darkgray", "darkgreen")) +
+  facet_wrap(~predictor) +
+  theme_minimal()
+```
+
+
+## To-Do
+Change colors of beta posteriors to reflect above 0, under 0
+Reduce predictor plots to those that were main predictors
+Crop ocean out of maps
+Prior vs posterior plots
+Figure out how to do t-test in Bayesian context- I think I'll do the Random Fields GLMM with this form: GDE ~ 1 + Freezeline, since a two sample t-test is just a linear regression with 
+

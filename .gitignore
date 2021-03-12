@@ -41,22 +41,8 @@ vignettes/*.pdf
 # rsconnect
 rsconnect/
 
-#large input files
-data/bold_data_insects.txt.zip
-data/bold_data_insects.txt
-data/climate_raw/*
-data/wallace_shapefiles/*
-data/climate_agg/*
+# data
+data/
 
-# large output files
-output/spreadsheets/filtered*
-output/spreadsheets/final*
-output/spreadsheets/bold*
-output/spreadsheets/seqstats*
-output/spreadsheets/fasta*
-output/spreadsheets/med*
-output/fastas/*
-output/alignments/*
-output/legends/*
-
-
+# output
+output/

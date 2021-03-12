@@ -1,0 +1,52 @@
+---
+title: "Temperate-Tropical Split"
+author: "Connor French"
+date: "7/23/2020"
+output: html_document
+---
+
+I'm splitting the globe into a temperate-tropical divide based on: 
+> White, A.E., Dey, K.K., Mohan, D., Stephens, M., Price, T.D., 2019. Regional influences on community structure across the tropical-temperate divide. Nat. Commun. 10, 2646. https://doi.org/10.1038/s41467-019-10253-6.  
+
+They observe a sharp overturn in community composition along a "freeze line", where the minimum temperature of the coldest month is below zero degrees. This corresponds roughly with temperate and tropical biomes. I am using their delineation and further refining the distinction by considering any "tropical" areas defined by the freeze line that overlap with temperate biomes as temperate. The code for creating a binary raster from the minimum temperature of the coldest month divide is in the "step-0_aggregation.ipynb" script. 
+
+
+## Setup
+```{r, setup}
+library(tidyverse)
+library(stars)
+library(sf)
+library(here)
+```
+
+
+Read in the file and get a rough plot.
+```{r}
+binary_raster <- read_stars(here("data", "climate_poly", "min_temp_binary.tif"))
+
+plot(binary_raster)
+```
+
+Convert to a polygon.
+```{r}
+binary_poly <- st_as_sf(binary_raster)
+
+binary_poly
+```
+
+Group the polygons by the binary classification and simplify to two polygons
+```{r}
+binary_union <- binary_poly %>% 
+  mutate(min_temp = if_else(min_temp_binary.tif > 0, "tropical", "temperate")) %>% 
+  group_by(min_temp) %>% 
+  summarize(is_tropical = mode(min_temp_binary.tif))
+
+
+```
+
+
+```{r}
+plot(binary_union)
+```
+
+

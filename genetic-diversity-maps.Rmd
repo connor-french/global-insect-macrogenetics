@@ -29,10 +29,19 @@ Read in summary stats files
 ```{r warning=FALSE, message=FALSE}
 spread_path <- here("output", "spreadsheets")
 
+# rescale avg pi to 0-1
+rescale <- function(x) {
+  y <- (x - min(x)) / (max(x) - min(x))
+  return(y)
+}
+
 sumstats <- read_csv(file.path(spread_path, "med_3_10_sumstats.csv")) %>% 
   mutate(log_num_otu = log10(num_otu),
-         log_num_ind = log10(num_ind)) %>% 
+         log_num_ind = log10(num_ind),
+         scaled_pi = rescale(avg_pi),
+         gen_health = scaled_pi * hill_1) %>% 
   filter(avg_pi < 0.02) # outlier cell
+
 ```
 
 Read in and filter environmental variables. Keeping it small for exploratory purposes right now. Once we decide on what explanatory variables to use, I'll move this to a separate script so this document doesn't have to work so hard.
@@ -44,18 +53,22 @@ explanatory_files <- list.files(explanatory_path, pattern = "*medium*", full.nam
 explanatory_rasters <- stack(explanatory_files)
 
 names(explanatory_rasters) <- str_remove(basename(explanatory_files), ".tif")
-
-explanatory_vars <- names(explanatory_rasters)
 ```
 
 ```{r}
 explanatory <- explanatory_rasters[sumstats$cell] 
 names(explanatory) <- names(explanatory_rasters)
-explanatory <- as_tibble(explanatory)
+
+explanatory <- as_tibble(explanatory) %>% 
+  bind_cols(sumstats[,c("log_num_otu", "log_num_ind", "num_order")]) %>% 
+  mutate(soil_medium_hwsd = as.factor(soil_medium_hwsd))
+
+explanatory_vars <- colnames(explanatory)
 ```
 
 
-Read in rasters at the three resolutions to provide a template for the genetic diversity maps. Also obtaining the basemap, setting the color palette for the maps, and filtering the summary statistics.  
+
+Read in rasters at the two resolutions to provide a template for the genetic diversity maps. Also obtaining the basemap, setting the color palette for the maps, and filtering the summary statistics.  
 ```{r}
 template_medium <- raster(here("data", "templates", "template_medium.tif"))
 
@@ -66,9 +79,9 @@ world_basemap <-
 
 pal <- wes_palette("Zissou1", 100, type = "continuous")
 
-# sumstats <- colnames(sumstats %>%
-#                        select(-cell)) %>%
-#   set_names()
+sumstats_names <- colnames(sumstats %>%
+                        select(-cell)) %>%
+  set_names()
 ```
 
 
@@ -77,22 +90,20 @@ Function to create an sf polygon from the summary statistic data.
 create_poly <- function(resolution){
   rast <- raster(get(paste0("template_", resolution)))
   
-  vals <- rep(NA, ncell(rast))
-  
   sumstats <- get("sumstats")
   
   explanatory <- get("explanatory")
   
-  vals[sumstats$cell] <- sumstats$avg_pi
+  all_df <- bind_cols(sumstats, explanatory) %>% 
+    arrange(cell)
   
-  rast <- setValues(rast, values = vals)
+  rast[all_df$cell] <- all_df$avg_pi
   
   rast_poly <- rasterToPolygons(rast) %>% 
-    st_as_sf() %>% 
-    rename(avg_pi = layer) %>% 
-    bind_cols(sumstats %>% select(-avg_pi),
-              explanatory)
-  
+    st_as_sf() %>%
+    bind_cols(all_df) %>% 
+    select(-layer, -log_num_otu1, -log_num_ind1, -num_order1) 
+
   return(rast_poly)
 }
 
@@ -110,7 +121,7 @@ write_legends <- function(sumstat, resolution) {
     sumstat_poly <- create_poly(resolution)
 
     sumstat_leg <- ggplot() +
-      geom_sf(data = sumstat_poly, aes(fill = .data[[sumstat]]), size = 0.1) +
+      geom_sf(data = sumstat_poly, aes_string(fill = sumstat, size = 0.1)) +
       scale_fill_gradientn(colors = pal, name = sumstat) +
       theme(legend.background = element_rect(fill = alpha("white", 0.5)))
     
@@ -133,7 +144,7 @@ write_legends <- function(sumstat, resolution) {
 
 Write legends to file for plotting and create a list of sumstat polygons for each resolution.
 ```{r}
-# resolutions <- "medium"
+resolutions <- "medium"
 # 
 # sumstat_poly <- vector(mode = "list", length = 1)
 # 
@@ -163,7 +174,7 @@ shinyApp(
     ),
     column(3,
       selectInput("sumstat", "Summary Statistic",
-                  choices = names(sumstats))
+                  choices = sumstats_names)
     ),
     column(3,
       selectInput("explanatory", "Explanatory Variable", 
@@ -178,10 +189,18 @@ shinyApp(
     fluidRow(
       column(plotOutput("scatterplot"), width = 7),
       column(gt_output("lm_table"), width = 4)
-      )
+      ),
+    
+    fluidRow(
+      column(plotOutput("explanatory_map"), width = 6),
+      column(plotOutput("extract_map"), width = 6)
+    )
   ),
   
   server = function(input, output) {
+    
+    all_df <- reactive(df <- bind_cols(explanatory, sumstats))
+    
     ss_poly <- reactive(df <-
                           sumstat_poly)
     
@@ -194,6 +213,10 @@ shinyApp(
         geom_sf(data = world_basemap,
                 fill = "transparent",
                 show.legend = FALSE)
+    })
+    
+    exp_rast <- reactive({
+      raster::subset(explanatory_rasters, input$explanatory)
     })
       
       output$sumstat_plot <- renderPlotly({
@@ -248,6 +271,25 @@ shinyApp(
       bind_cols(lm_tidy, lm_glance) %>% 
         gt() %>% 
         fmt_number(everything(), decimals = 3)
+    })
+    
+    output$explanatory_map <- renderPlot({
+      plot(exp_rast())
+    })
+    
+    output$extract_map <- renderPlot({
+      ggplot() +
+          geom_sf(data = world_basemap,
+                fill = "transparent",
+                show.legend = FALSE) +
+          geom_sf(
+            data = ss_poly(),
+            aes_string(fill = input$explanatory),
+            size = 0.1
+          ) +
+          scale_fill_gradientn(colors = pal) +
+          labs(title = paste0("Map of ", input$explanatory)) +
+          ggthemes::theme_map()
     })
   },
   options = list(height = 700)
