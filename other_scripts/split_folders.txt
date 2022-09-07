@@ -1,0 +1,14 @@
+#this script splits the files inside of folders into defined groups (i/group_size+1)
+#outputs as subdirectories into "dir_001", "dir_002", etc.
+#useful for "parallelizing" things that iterate through files. 
+#got this from https://askubuntu.com/questions/584724/split-contents-of-a-directory-into-multiple-sub-directories
+
+group_size=20000
+i=0; 
+for f in *; 
+do 
+    d=dir_$(printf %03d $((i/$group_size+1))); 
+    mkdir -p $d; 
+    mv "$f" $d; 
+    let i++; 
+done

@@ -1,0 +1,256 @@
+---
+title: "Insect GBIF processing"
+output: html_document
+---
+
+## Setup
+Install packages for AWS instance.
+```{r, eval=FALSE}
+# for obtaining speciesKey for invasive species
+install.packages("rgbif")
+
+# for reading data and data wrangling
+install.packages("data.table")
+
+# for working with strings
+install.packages("stringr")
+
+# for exploratory plots
+install.packages("ggplot2")
+
+# for parallelizing apply functions
+install.packages("future.apply")
+
+# for GIS operations and sf filtering
+install.packages("rnaturalearth")
+install.packages("sf")
+install.packages("raster")
+install.packages("rgdal")
+
+# for maintaining file structure across systems (for reproducibility)
+install.packages("here")
+```
+
+
+Load packages
+```{r}
+library(rgbif)
+library(data.table)
+library(stringr)
+library(ggplot2)
+library(future.apply)
+library(sf)
+library(raster)
+library(rnaturalearth)
+library(dplyr)
+library(here)
+```
+
+This document outlines the data processing to filter and summarize insect species richness across the globe. 
+
+## Filter strategy
+These are the steps I am going to filter the data to maximize memory efficiency with the appropriate filters. I've already done some filtering on GBIF before downloading the data, so some obvious filters (e.g. if the record has coordinates) won't be a part of this pipeline. 
+
+Steps: 
+
+* get rid of unnecessary columns
+* only keep records with speciesKey
+* only keep records >= 1983 (when GPS technology became public)
+* filter out species with speciesKey that matches invasive species speciesKey
+* remove records with certain issues (this involves string-matching, which can take a while with large data sets)
+
+## Filtering
+
+Specify vector of columns I'm going to keep.
+```{r}
+keep_cols <- c(
+ "gbifID",
+ "occurrenceID",
+ "countryCode",
+ "class",
+ "verbatimScientificName",
+ "decimalLongitude",
+ "decimalLatitude",
+ "datasetKey",
+ "taxonKey",
+ "speciesKey",
+ "issue",
+ "basisOfRecord",
+ "year"
+)
+
+```
+
+Read in data and preliminary filter. I forgot to specify Insecta and retained all arthropods, so I'm filtering for insects here.
+```{r}
+insect_df <- fread(here("data", "climate_raw", "arthropod_gbif.csv"), 
+                   select = keep_cols)
+
+
+# go ahead and remove any observations with missing lat/longs just in case
+insect_df <- insect_df[!is.na(decimalLatitude) & !is.na(decimalLongitude)]
+
+# retain only insects (forgot to filter for insects when downloading from GBIF)
+insect_df <- insect_df[class == "Insecta"]
+```
+
+After a quick look at the columns, it looks like filtering by keys, rather than the scientific names is the way to go. The keys are consistent when the scientific name entries are not. Also filtering for records after at least 1983. 
+```{r}
+insect_df_sp <- insect_df[!is.na(speciesKey) & year >= 1983]
+dim(insect_df_sp)
+```
+
+This is a list of certain issues that make the observation unusable.
+```{r}
+issues <- paste(c(
+ "COORDINATE_INVALID",
+ "COORDINATE_REPROJECTION_FAILED",
+ "TAXON_MATCH_NONE",
+ "ZERO_COORDINATE"
+), 
+collapse = "|")
+
+
+```
+
+Some issues need to be looked at and fixed, rather than filtered out. I'll do this at the very end. This is the list of those issues.
+```{r}
+issues_explore <- paste(c(
+ "COORDINATE_PRECISION_INVALID",
+ "COORDINATE_UNCERTAINTY_METERS_INVALID",
+ "PRESUMED_NEGATED_LATITUDE",
+ "PRESUMED_NEGATED_LONGITUDE",
+ "PRESUMED_SWAPPED_COORDINATE"
+), collapse = "|")
+```
+
+Remove the bad issues. 
+```{r}
+issue_filt <- str_detect(insect_df_sp$issue, issues, negate = TRUE)
+insect_df_noissues <- insect_df_sp[issue_filt]
+
+dim(insect_df_noissues)
+```
+
+### Questionable issues
+Take a look at the questionable issues.
+```{r}
+issue_exp_filt <- str_detect(insect_df_noissues$issue, issues_explore)
+insect_exp_df <- insect_df_noissues[issue_exp_filt]
+
+dim(insect_exp_df)
+```
+
+I took a closer look at each of the issues, and none seem to be a problem. Maybe GBIF flips the "PRESUMED_NEGATED_*" coordinates on their own? Everything was in the correct country. Not going to remove any of these.
+```{r}
+insect_exp_sf <- insect_exp_df %>% st_as_sf(crs = st_crs(4326), coords = c("decimalLongitude", "decimalLatitude"))
+
+ggplot() +
+  geom_sf(data = ne_countries(returnclass = "sf")) +
+  geom_sf(data = insect_exp_sf, aes(fill = countryCode, color = countryCode))
+```
+
+### Get invasive keys
+Getting the speciesKey for my invasive species list. 
+
+First, reading in the files.
+```{r}
+easin <- fread(here("data", "invasive", "easin.csv"), skip = 1, select = "NAME")
+gisd <- fread(here("data", "invasive", "export_gisd.csv"), skip = 1, select = "V1")
+cabi <- fread(here("data", "invasive", "isc_cabi.csv"), skip = 1, select = "V1")
+```
+
+Combining all into a vector of species names and removing duplicates
+```{r}
+invasive_sp <- c(easin$NAME, gisd$V1, cabi$V1)
+invasive_sp <- invasive_sp[!duplicated(invasive_sp)]
+```
+
+Search GBIF for records and retain a single speciesKey per species. This takes a while.
+```{r, eval=FALSE}
+search_invasive <- function(species){
+ record <- rgbif::occ_data(scientificName = species, limit = 1)
+ sp_key <- record$data$speciesKey
+ return(sp_key)
+}
+
+plan(multiprocess)
+invasive_sp_gbif <- future_sapply(invasive_sp, search_invasive)
+invasive_sp_gbif <- unlist(invasive_sp_gbif)
+```
+
+Write the list of species keys to a csv so I don't have to keep running the search.
+```{r}
+write.csv(as.data.table(unlist(invasive_sp_gbif)), here("data", "invasive", "invasive_keys.csv"))
+```
+
+Read in the species keys and extract them as a vector.
+```{r}
+invasive_sp_gbif <- fread(here("data", "invasive", "invasive_keys.csv"))[[2]] 
+```
+
+Remove any invasive species.
+```{r}
+# negate the `%in%` statement so only species keys NOT in the invasive species list are returned
+`%notin%` <- Negate(`%in%`)
+
+insect_df_noinv <- insect_df_noissues[speciesKey %notin% invasive_sp_gbif]
+
+dim(insect_df_noinv)
+```
+
+### GIS processing
+Now I'm going to convert the final data set to an `sf` object for summarizing species richness, which will be the number of species within the medium resolution raster/polygon cell. 
+
+Reading in the template raster to aggregate the species to.
+```{r}
+template <- raster(here("data", "templates", "template_medium.tif"))
+
+# identifier values for each cell
+values(template) <- seq_len(ncell(template))
+
+template_sf <- rasterToPolygons(template) %>% st_as_sf()
+```
+
+Convert the GBIF observations to an `sf` object. 
+```{r}
+insect_sf <- st_as_sf(insect_df_noinv, 
+           crs = st_crs(4326),
+           coords = c("decimalLongitude", "decimalLatitude")) %>% 
+ st_transform(crs = st_crs(template_sf)) %>% 
+ select(speciesKey)
+
+insect_sf
+```
+
+
+Count the number of unique species per cell.
+```{r}
+sp_richness <- st_join(insect_sf, template_sf, join = st_within) %>% 
+ as_tibble() %>%
+ group_by(template_medium) %>% 
+ summarize(n_species = uniqueN(speciesKey))
+```
+
+Join the counts with the template. 
+```{r}
+insect_sp_richness <- left_join(template_sf, sp_richness)
+```
+
+Basic plot to visualize distribution of species richness.
+```{r}
+ggplot() +
+ geom_sf(data = insect_sp_richness, aes(fill = n_species, color = n_species)) +
+ scale_fill_viridis_c() +
+ scale_color_viridis_c()
+```
+
+```{r}
+st_write(insect_sp_richness, here("insect_sp_richness.geojson"))
+```
+
+
+## System info
+```{r}
+sessionInfo()
+```

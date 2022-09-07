@@ -1,0 +1,138 @@
+---
+title: "GDE distributions"
+output: html_notebook
+---
+
+```{r}
+library(vegan)
+library(tidyverse)
+library(sf)
+```
+
+Read in final data set and raw pi data set
+```{r}
+df_150 <- st_read("/Users/connorfrench/Dropbox/Old_Mac/School_Stuff/CUNY/BigAss-bird-phylogeography/BigAss-phylogeography/output/spreadsheets/medium_150.geojson") %>% 
+  filter(hill_1 > 0.35)
+
+df_pi <- read_csv("/Users/connorfrench/Dropbox/Old_Mac/School_Stuff/CUNY/BigAss-bird-phylogeography/BigAss-phylogeography/output/spreadsheets/cell_medium_3_20_pi.csv")
+```
+
+Filter pi df for cells that are within the final data frame
+```{r}
+df_pi_filt <- df_pi %>% 
+  filter(cell %in% df_150$cell)
+```
+
+Top 5 orders
+```{r}
+df_pi_filt %>% 
+  count(order) %>% 
+  arrange(desc(n)) %>% 
+  slice(1:5) %>% 
+  mutate(order = fct_reorder(order, n)) %>% 
+  ggplot() +
+  geom_col(aes(x = order, y = n)) +
+  coord_flip()
+```
+
+Histogram of pi for median Hill 1 (0.520), cell = 3830
+```{r}
+df_pi_filt %>% 
+  filter(cell == 3830) %>% 
+  rownames_to_column(var = "id") %>% 
+  mutate(id = fct_reorder(id, pi, .desc = TRUE)) %>% 
+  ggplot() +
+  geom_line(aes(x = id, y = pi, group = 1)) +
+  theme(axis.text.x = element_blank(),
+        axis.ticks.x = element_blank())
+```
+
+Histogram of pi for max Hill 1 = 0.650, cell 3093
+```{r}
+df_pi_filt %>% 
+  filter(cell == 3093) %>% 
+  rownames_to_column(var = "id") %>% 
+  mutate(id = fct_reorder(id, pi, .desc = TRUE)) %>% 
+  ggplot() +
+  geom_line(aes(x = id, y = pi, group = 1)) +
+  theme(axis.text.x = element_blank(),
+        axis.ticks.x = element_blank())
+```
+
+
+Histogram of pi for Hill 1 = 0.359
+```{r}
+df_pi_filt %>% 
+  filter(cell == 825) %>% 
+  rownames_to_column(var = "id") %>% 
+  mutate(id = fct_reorder(id, pi, .desc = TRUE)) %>% 
+  ggplot() +
+  geom_line(aes(x = id, y = pi, group = 1)) +
+  theme(axis.text.x = element_blank(),
+        axis.ticks.x = element_blank())
+```
+
+Histograms of low, medium, and high Hill number cells
+```{r}
+gde_plot <- df_pi_filt %>% 
+  filter(cell %in% c(825, 3830, 3093)) %>% 
+  mutate(cell = factor(cell),
+         hill_rank = case_when(
+           cell == 825 ~ "Low",
+           cell == 3093 ~ "High",
+           TRUE ~ "Medium"
+         ),
+         hill_rank = fct_relevel(hill_rank, c("High", "Medium", "Low"))) %>% 
+  filter(hill_rank != "Medium") %>% 
+  group_by(hill_rank) %>% 
+  arrange(desc(pi)) %>% 
+  mutate(id = row_number()) %>% 
+  ungroup() %>% 
+  ggplot() +
+  geom_hline(yintercept = 0.005, color = "darkgray", linetype = 2) +
+  geom_line(aes(x = id, y = pi, color = hill_rank, group = hill_rank)) +
+  scale_color_viridis_d() + 
+  labs(y = "Average number of pairwise nucleotide differences",
+       x = "Rank",
+       color = "GDE Rank",
+       caption = str_wrap("GDE conceptual fig: Illustration of distributions described by the first order Hill number of average pairwise nucleotide diversity across OTUs (GDE). Each line summarizes the distribution of genetic diversity for the cells with the maximum and minimum GDE values in the current dataset. The values are ordered from highest GD to lowest GD. The horizontal dashed line indicates a theoretical GDE value of 1.0, where all OTUs have the same GD.")) +
+  theme_minimal() +
+  theme(plot.caption = element_text(size = 9,
+                                    hjust = 0),
+        plot.caption.position = "plot",
+        axis.text.x = element_blank(),
+        axis.ticks.x = element_blank())
+
+gde_plot
+```
+
+NEED TO GO BACK AND MAKE SURE OTHER HILL NUMBERS ARE NOT NORMALIZED
+```{r}
+df_150 %>% 
+  filter(min_temp == "temperate") %>% 
+  pivot_longer(cols = contains("hill_"), 
+               names_to = "hill_q",
+               values_to = "hill_number") %>% 
+  ggplot() +
+  geom_density(aes(x = hill_number, color = hill_q))
+```
+
+
+```{r}
+biome_shp <- st_read("/Users/connorfrench/Dropbox/Old_Mac/School_Stuff/CUNY/BigAss-bird-phylogeography/BigAss-phylogeography/data/climate_poly/Ecoregions2017/Ecoregions2017.shp")
+
+```
+
+```{r}
+biomes <- biome_shp %>% 
+  select(BIOME_NAME, BIOME_NUM) %>% 
+  st_transform(crs = "+proj=cea +lon_0=0 +lat_ts=30 +x_0=0 +y_0=0 +datum=WGS84 +ellps=WGS84 +units=m +no_defs")
+
+st_crs(df_150) <- "+proj=cea +lon_0=0 +lat_ts=30 +x_0=0 +y_0=0 +datum=WGS84 +ellps=WGS84 +units=m +no_defs"
+
+df_biomes <- st_join(x = df_150, y = biomes, largest = TRUE)
+
+
+```
+
+

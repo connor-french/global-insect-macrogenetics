@@ -1,0 +1,2693 @@
+---
+title: "Publication Figures"
+author: "Connor French"
+output:
+  pdf_document:
+    latex_engine: xelatex
+---
+
+```{r, include=FALSE}
+options(tinytex.verbose = TRUE)
+knitr::opts_chunk$set(echo=FALSE, warning=FALSE, message=FALSE)
+```
+
+# Setup 
+
+Load packages
+```{r setup}
+library(raster)
+library(phytools)
+library(HDInterval)
+library(glmmfields)
+library(tidyverse)
+library(sf)
+library(tidybayes)
+library(patchwork)
+library(here)
+library(tmap)
+library(gridExtra)
+library(grid)
+library(effectsize)
+library(zoo)
+library(scales)
+library(ggspatial)
+library(data.table)
+library(bayesplot)
+# remotes::install_github("matthewkling/colormap")
+library(colormap)
+library(viridis)
+library(socorro) # custom package, download like this:
+                 # `remotes::install_github('ajrominger/socorro')`
+
+
+# source helper functions
+source(here("R", "helper_functions.R"))
+source(here("R", "modeling_fns.R"))
+
+
+```
+
+```{r, read-data-theme}
+
+### read in the two final models
+# GDE
+model_gde <- read_rds(here("output", "models", "glmm_gde.rds")) %>% 
+  pluck("min_otu_100")
+
+# GDM
+model_gdm <- read_rds(here("output", "models", "glmm_gdm.rds")) %>% 
+  pluck("min_otu_100")
+
+theme_insects <- function() {
+  theme_bw() %+replace%
+    theme(axis.text = element_text(size = 14),
+          axis.title = element_text(size = 20),
+          legend.text = element_text(size = 14),
+          legend.title = element_text(size = 20))
+}
+
+
+crs_behr <- "+proj=cea +lon_0=0 +lat_ts=30 +x_0=0 +y_0=0 +datum=WGS84 +ellps=WGS84 +units=m +no_defs"
+```
+
+
+
+
+Given that I will need to recreate figures independently, rather than in the order that they are positioned in the document, I am loading data for each figure independently. So, data may get loaded redundantly. The only data I'm reading in at the beginning are the two models
+
+# Main figurers
+
+## GDE conceptual figure
+
+The rank plots are adapted from Andy Rominger's code in `R/GDE_figs.R`. I took the panes generated here and paneled them together with some modifications and illustrations in Inkscape.  
+
+Set up parameters  
+
+```{r}
+# make example distributions (with high and low evenness)
+xx <- seq(0, 9, length.out = 100)
+pp <- ((1:length(xx)) - 0.5) / length(xx)
+
+#hiEvenDist <- dgamma(xx, 6, 2.5)
+hiEvenRank_loGDM <- qgamma(pp, 6, 2.5, lower.tail = FALSE)
+hiEvenRank_hiGDM <- qgamma(pp, 10, 2.5, lower.tail = FALSE)
+
+loEvenRank <- qgamma(pp, 1, 0.4, lower.tail = FALSE)
+
+loEvenRank_hiGDM <- qbeta(pp, 0.5, 10, lower.tail = FALSE)
+loEvenRank_loGDM <- qbeta(pp, 0.5, 5, lower.tail = FALSE)
+
+
+
+# colors for high and low
+loCol <- "#E6550D"
+hiCol <- "#FDAE6B"
+
+# plotting pars
+ppars <- list(mar = c(2, 2, 2, 0) + 0.5, mgp = c(1, 0, 0), cex = 1.2)
+
+```
+
+Make plots  
+
+### Tree visualization
+
+Simulate a tree  
+
+```{r}
+tip_labels <- paste0("OTU_", 1:20)
+
+tip_labels[c(1, 4, 10:15, 16, 17)] <- " "
+
+
+set.seed(19761976)
+species_tree <- rtree(20, br = runif, tip.label = tip_labels)
+gd_vals <- species_tree$edge.length[1:20] * 0.1
+gd_vals[c(1, 4, 10:15, 16, 17)] <- FALSE
+
+names(gd_vals) <- tip_labels
+
+dotTree(species_tree, x = gd_vals, legend = FALSE, colors = "darkgreen")
+```
+
+Write tree to file  
+
+```{r}
+pdf(here("output", "publication_figs", "species_tree.pdf"), width = 4, height = 4)
+
+dotTree(species_tree, x = gd_vals, legend = FALSE, colors = "darkgreen")
+
+dev.off()
+```
+
+Coalescent tree  
+
+```{r}
+tip_labels_coal <- paste0("Ind_", 1:10)
+
+# just randomly simulated coalescent trees in ape until I got coalescent trees with comparatively high and low depths
+set.seed(16)
+coal_tree_low_gd <- rcoal(10, tip.label = tip_labels_coal)
+
+set.seed(20)
+coal_tree_hi_gd <- rcoal(10, tip.label = tip_labels_coal)
+
+plotTree(coal_tree_low_gd)
+plotTree(coal_tree_hi_gd)
+```
+
+Write trees to file  
+
+```{r}
+
+# actually looks like a high GD tree
+pdf(here("output", "publication_figs", "coalescent_tree_low_gd.pdf"), width = 4, height = 4)
+
+plotTree(coal_tree_low_gd)
+
+dev.off()
+
+# actually looks like a low GD tree- the long basal branches make it high GD. Scaling it in Inkscape.
+pdf(here("output", "publication_figs", "coalescent_tree_high_gd.pdf"), width = 4, height = 4)
+
+plotTree(coal_tree_hi_gd)
+
+dev.off()
+```
+
+### GDE shape
+
+High GDE, High GDM
+
+```{r}
+# plot ranks
+pdf(here("output", "publication_figs", "hi_GDE_hi_GDM.pdf"), width = 4, height = 4)
+par(ppars)
+
+plot(pp, hiEvenRank_hiGDM, ylim = range(loEvenRank, hiEvenRank_hiGDM), type = 'n',
+     xlab = "", ylab = "",
+     axes = FALSE, frame.plot = TRUE)
+
+polygon(c(pp, 1, min(pp)), c(hiEvenRank_hiGDM, 0, 0), col = colAlpha("darkorange", 0.5),
+        border = NA)
+
+lines(pp, hiEvenRank_hiGDM, col = "darkorange", lwd = 2)
+
+dev.off()
+```
+
+Low GDE, High GDM
+
+```{r}
+# plot ranks
+pdf(here("output", "publication_figs", "low_GDE_hi_GDM.pdf"), width = 4, height = 4)
+par(ppars)
+
+plot(pp, loEvenRank, ylim = range(loEvenRank, hiEvenRank_hiGDM), type = 'n',
+     xlab = "", ylab = "",
+     axes = FALSE, frame.plot = TRUE)
+
+polygon(c(pp, 1, min(pp)), c(loEvenRank, 0, 0), col = colAlpha("darkorange", 1.0),
+        border = NA)
+
+lines(pp, loEvenRank, col = "darkorange", lwd = 2)
+
+dev.off()
+```
+
+High GDE, Low GDM
+
+```{r}
+# plot ranks
+pdf(here("output", "publication_figs", "hi_GDE_low_GDM.pdf"), width = 4, height = 4)
+par(ppars)
+
+plot(pp, hiEvenRank_loGDM, ylim = range(loEvenRank, hiEvenRank_hiGDM), type = 'n',
+     xlab = "", ylab = "",
+     axes = FALSE, frame.plot = TRUE)
+
+polygon(c(pp, 1, min(pp)), c(hiEvenRank_loGDM, 0, 0), col = colAlpha("darkorange", 0.5),
+        border = NA)
+
+lines(pp, hiEvenRank_loGDM, col = "darkorange", lwd = 2)
+
+dev.off()
+```
+
+
+Low GDE, Low GDM
+
+```{r}
+# plot ranks
+pdf(here("output", "publication_figs", "low_GDE_low_GDM.pdf"), width = 4, height = 4)
+par(ppars)
+
+plot(pp, loEvenRank * 0.7, ylim = range(loEvenRank, hiEvenRank_hiGDM), type = 'n',
+     xlab = "", ylab = "",
+     axes = FALSE, frame.plot = TRUE)
+
+polygon(c(pp, 1, min(pp)), c(loEvenRank * 0.7, 0, 0), col = colAlpha("darkorange", 1.0),
+        border = NA)
+
+lines(pp, loEvenRank * 0.7, col = "darkorange", lwd = 2)
+
+dev.off()
+```
+
+
+## Posterior summary figure
+
+
+### Data processing 
+
+Read in data.  
+
+```{r psf-data, message=FALSE}
+model_data <- read_sf(here("output", "spreadsheets", "full_sf.geojson"), crs = crs_behr) %>% 
+  filter(cell %in% model_gde$data$cell)
+```
+
+Sample posteriors for the figure. I'm retrieving the response posterior and the beta posteriors  
+
+```{r psf-posteriors, warning=FALSE, message=FALSE}
+set.seed(97996)
+# GDE posteriors
+response_posts_gde <- sample_response_posterior(model_gde)
+
+param_posts_gde <- tidy_post(model_gde)
+
+# GDM posteriors
+set.seed(4234887)
+response_posts_gdm <- sample_response_posterior(model_gdm, response = "gdm")
+
+param_posts_gdm <- tidy_post(model_gdm)
+```
+
+New data frames for the GDE freeze line division and boxplot.  
+
+```{r, gde-fl-df}
+gde_frz_line <- model_data %>% 
+  group_by(min_temp) %>% 
+  summarize(gde_median = median(gde)) %>% 
+  pivot_wider(names_from = "min_temp", values_from = "gde_median")
+
+# changing names for min_temp variable for appropriate labels in boxplot
+df_boxplot <- model_data %>% 
+  mutate(min_temp = fct_relevel(min_temp, "tropical", "temperate")) %>% 
+  mutate(min_temp = case_when(
+    min_temp == "tropical" ~ "Above Freeze-line\n(Observed Data)",
+    min_temp == "temperate" ~ "\nBelow Freeze-line\n(Observed Data)"
+  ))
+
+```
+
+### Figure
+I have the panes, then the two options.  
+
+#### Posterior panes
+GDE posterior pane. Will need to move the y-axis label in inkscape.  
+
+```{r, gde-post-fig}
+gde_posterior <- ggplot() +
+  geom_density(data = response_posts_gde, 
+               aes(x = response_post, 
+                   group = draw), 
+               color = alpha("darkgray", 0.1)) +
+  geom_density(data = model_data,
+               aes(x = gde),
+               color = "darkorange") +
+  geom_vline(xintercept = gde_frz_line$temperate, 
+             alpha = 0.5,
+             linetype = 2) +
+  geom_vline(xintercept = gde_frz_line$tropical, 
+             alpha = 0.5,
+             linetype = 2) +
+  geom_boxplot(data = df_boxplot, aes(x = gde, y = min_temp), color = "darkorange") +
+  geom_jitter(data = df_boxplot, aes(x = gde, y = min_temp), color = "darkorange", alpha = 0.4, height = 0.2) + 
+  labs(x = "GDE",
+       y = "Density") +
+  theme_insects() +
+  theme(axis.title.y = element_text(margin = ggplot2::margin(t = 0, r = -50, b = 0, l = 0)),
+        plot.margin = unit(c(5.5, 5.5, 5.5, 65.5), "points"))
+
+
+```
+
+```{r, gde-post-plot}
+gde_posterior
+```
+
+
+GDM posterior pane.  
+
+```{r, gdm-post-fig}
+gdm_posterior <- ggplot() + 
+  geom_density(data = response_posts_gdm, 
+               aes(x = response_post, 
+                   group = draw), 
+               color = alpha("darkgray", 0.1)) +
+  geom_density(data = model_data,
+               aes(x = gdm),
+               color = "darkgreen") +
+  labs(x = "GDM",
+       y = "Density") +
+  theme_insects() +
+  theme(axis.text.y = element_blank(),
+        axis.ticks.y = element_blank(),
+        axis.title.y = element_text(margin = ggplot2::margin(t = 0, r = -50, b = 0, l = 0)))
+```
+
+```{r, gdm-post-plot}
+gdm_posterior
+```
+
+
+#### Beta posterior panes
+
+Posteriors for GDE  
+
+```{r, beta-gde}
+hpd_gde <- param_posts_gde$B %>% 
+  pivot_longer(everything(), names_to = "beta", values_to = "posterior") %>% 
+  group_by(beta) %>% 
+  summarize(
+    median = median(posterior),
+    hpd_95_hi = HDInterval::hdi(posterior, credMass = 0.95)["upper"],
+    hpd_95_low = HDInterval::hdi(posterior, credMass = 0.95)["lower"],
+    hpd_90_hi = HDInterval::hdi(posterior, credMass = 0.90)["upper"],
+    hpd_90_low = HDInterval::hdi(posterior, credMass = 0.90)["lower"],
+    hpd_80_hi = HDInterval::hdi(posterior, credMass = 0.80)["upper"],
+    hpd_80_low = HDInterval::hdi(posterior, credMass = 0.80)["lower"],
+    hpd_70_hi = HDInterval::hdi(posterior, credMass = 0.70)["upper"],
+    hpd_70_low = HDInterval::hdi(posterior, credMass = 0.70)["lower"],
+    hpd_50_hi = HDInterval::hdi(posterior, credMass = 0.50)["upper"],
+    hpd_50_low = HDInterval::hdi(posterior, credMass = 0.50)["lower"]
+    )
+
+
+beta_post_gde <- param_posts_gde$B %>% 
+  select(-intercept) %>% 
+  pivot_longer(everything(), 
+               names_to = "parameter",
+               values_to = "posterior") %>% 
+  mutate(parameter = case_when(
+    str_detect(parameter, "bio_5") ~ "MTWM",
+    str_detect(parameter, "bio_13") ~ "PWM",
+    str_detect(parameter, "temp_trend") ~ "Temp. Trend"
+  ),
+    parameter = fct_reorder(parameter, abs(posterior))) %>% 
+  ggplot(aes(x = posterior, y = parameter)) + 
+  geom_vline(xintercept = 0, linetype = "dashed", color = "darkgray", alpha = 0.7) +
+  stat_halfeye(.width = c(0.90, 0.95), fill = "darkorange", alpha = 0.9) +
+  labs(x = "GDE slope", 
+       y = NULL) +
+  theme_insects() 
+```
+
+```{r, beta-gde-plot}
+beta_post_gde
+```
+
+
+Posteriors for GDM  
+
+```{r, beta-gdm}
+hpd_gdm <- param_posts_gdm$B %>% 
+  pivot_longer(everything(), names_to = "beta", values_to = "posterior") %>% 
+  group_by(beta) %>% 
+  summarize(
+    median = median(posterior),
+    hpd_95_hi = HDInterval::hdi(posterior, credMass = 0.95)["upper"],
+    hpd_95_low = HDInterval::hdi(posterior, credMass = 0.95)["lower"],
+    hpd_90_hi = HDInterval::hdi(posterior, credMass = 0.90)["upper"],
+    hpd_90_low = HDInterval::hdi(posterior, credMass = 0.90)["lower"],
+    hpd_80_hi = HDInterval::hdi(posterior, credMass = 0.80)["upper"],
+    hpd_80_low = HDInterval::hdi(posterior, credMass = 0.80)["lower"],
+    hpd_70_hi = HDInterval::hdi(posterior, credMass = 0.70)["upper"],
+    hpd_70_low = HDInterval::hdi(posterior, credMass = 0.70)["lower"],
+    hpd_50_hi = HDInterval::hdi(posterior, credMass = 0.50)["upper"],
+    hpd_50_low = HDInterval::hdi(posterior, credMass = 0.50)["lower"]
+    )
+
+
+beta_post_gdm <- param_posts_gdm$B %>% 
+  select(-intercept) %>% 
+  pivot_longer(everything(), 
+               names_to = "parameter",
+               values_to = "posterior") %>% 
+  mutate(parameter = case_when(
+    str_detect(parameter, "bio_5") ~ "MTWM",
+    str_detect(parameter, "bio_15") ~ "Precip. Seasonality",
+    str_detect(parameter, "precip_trend") ~ "Precip. Trend",
+    str_detect(parameter, "bio_2") ~ "Temp. Range",
+    str_detect(parameter, "temp_trend") ~ "Temp. Trend",
+    str_detect(parameter, "precip_var") ~ "Precip. Variation",
+    str_detect(parameter, "bio_13") ~ "PWM",
+    str_detect(parameter, "bio_14") ~ "PDM",
+  ),
+    parameter = fct_reorder(parameter, abs(posterior))) %>% 
+  ggplot(aes(x = posterior, y = parameter)) + 
+  geom_vline(xintercept = 0, linetype = "dashed", color = "darkgrey", alpha = 0.7) +
+  stat_halfeye(.width = c(0.90, 0.95), fill = "darkgreen", alpha = 0.9) +
+  labs(x = "GDM slope", 
+       y = NULL) +
+  theme_insects() 
+```
+
+```{r, beta-gdm-plot}
+beta_post_gdm
+```
+
+
+```{r, full-post-plot}
+full_posterior_plot <- (gdm_posterior + beta_post_gdm) / (gde_posterior + beta_post_gde)  + plot_annotation(tag_levels = "a", tag_suffix = ")")
+
+full_posterior_plot
+```
+
+Write to file  
+
+```{r, eval=FALSE}
+ggsave(filename = here("output", "publication_figs", "posterior_fig.svg"),
+       plot = full_posterior_plot,
+       width = 36,
+       height = 22.5,
+       dpi = 300,
+       unit = "cm")
+```
+
+## GDE conceptual figure
+
+Read in data  
+
+```{r}
+df_150 <- st_read("/Users/connorfrench/Dropbox/Old_Mac/School_Stuff/CUNY/BigAss-bird-phylogeography/BigAss-phylogeography/output/spreadsheets/medium_150.geojson") %>% 
+  filter(gde > 0.35)
+
+df_pi <- read_csv("/Users/connorfrench/Dropbox/Old_Mac/School_Stuff/CUNY/BigAss-bird-phylogeography/BigAss-phylogeography/output/spreadsheets/cell_medium_3_20_pi.csv")
+```
+
+
+Filter pi df for cells that are within the final data frame  
+
+```{r}
+df_pi_filt <- df_pi %>% 
+  filter(cell %in% df_150$cell)
+```
+
+
+Figure  
+
+```{r}
+gde_plot <- df_pi_filt %>% 
+  filter(cell %in% c(825, 3830, 3093)) %>% 
+  mutate(cell = factor(cell),
+         hill_rank = case_when(
+           cell == 825 ~ "Low",
+           cell == 3093 ~ "High",
+           TRUE ~ "Medium"
+         ),
+         hill_rank = fct_relevel(hill_rank, c("High", "Medium", "Low"))) %>% 
+  filter(hill_rank != "Medium") %>% 
+  group_by(hill_rank) %>% 
+  arrange(desc(pi)) %>% 
+  mutate(id = row_number()) %>% 
+  ungroup() %>% 
+  ggplot() +
+  geom_hline(yintercept = 0.005, color = "darkgray", linetype = 2) +
+  geom_line(aes(x = id, y = pi, color = hill_rank, group = hill_rank)) +
+  scale_color_viridis_d() + 
+  labs(y = "GD",
+       x = "GD Rank",
+       color = "GDE Rank",
+       caption = str_wrap("GDE conceptual fig: Illustration of distributions described by the first order Hill number of average pairwise nucleotide diversity across OTUs (GDE). Each line summarizes the distribution of genetic diversity for the cells with the maximum and minimum GDE values in the current dataset. The values are ordered from highest GD to lowest GD. The horizontal dashed line indicates a theoretical GDE value of 1.0, where all OTUs have the same GD.")) +
+  theme_minimal() +
+  theme(plot.caption = element_text(size = 9,
+                                    hjust = 0),
+        plot.caption.position = "plot",
+        axis.text = element_text(size = 14),
+        axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(),
+        axis.title = element_text(size = 20),
+        legend.title = element_text(size = 20),
+        legend.text = element_text(size = 14))
+
+gde_plot
+```
+
+Save to file  
+
+```{r, eval=FALSE}
+ggsave(filename = here("output", "publication_figs", "gde_conceptual_fig.pdf"),
+       plot = gde_plot,
+       width = 24,
+       height = 15,
+       dpi = 300,
+       unit = "cm")
+```
+
+## Order sampling figure
+
+Read in data and do some wrangling  
+
+```{r}
+raw_pi <- read_csv(here("output", "spreadsheets", "cell_medium_3_10_pi.csv"))
+
+full_sf_100 <- read_sf(here("output", "spreadsheets", "full_sf.geojson")) %>% 
+  filter(num_otu >= 100)
+
+pw_pi_filt <- raw_pi %>% 
+  filter(cell %in% full_sf_100$cell)
+
+pw_pi_prop <- pw_pi_filt %>% 
+  count(order, sort = TRUE) %>% 
+  mutate(prop = n / sum(n),
+         order = as.character(order),
+         order_summary = ifelse(prop < 0.01, "Other", order),
+         order_summary = fct_reorder(order_summary, n)
+         )
+```
+
+Write summary to csv  
+
+```{r, eval=FALSE}
+write_csv(pw_pi_prop, here("output", "spreadsheets", "otu_sampling.csv"))
+```
+
+
+
+Plot the figure  
+"Other" includes the 20 other insect orders in the data set.  
+
+```{r}
+order_fig <- pw_pi_prop %>% 
+  ggplot(aes(x = order_summary, y = prop)) +
+  geom_col(fill = "darkgreen") + 
+  coord_flip() +
+  theme_bw() +
+  labs(y = "Proportion of OTUs") +
+  theme(axis.title.y = element_blank(),
+        axis.title.x = element_text(size = 20),
+        axis.text = element_text(size = 14)) 
+
+```
+
+```{r, order-fig}
+order_fig
+```
+
+Save to file  
+
+```{r, eval=FALSE}
+ggsave(filename = here("output", "publication_figs", "order_summary_fig.pdf"),
+       plot = order_fig,
+       width = 24,
+       height = 15,
+       dpi = 300,
+       unit = "cm")
+```
+
+
+## Prediction Maps
+
+### Map helpers  
+
+```{r map-helpers-1}
+# for mapping. 
+world_base_map <- rnaturalearth::ne_countries(scale = "small", returnclass = "sf") %>%
+  select(continent, name_long) %>% 
+  st_transform(crs = "+proj=cea +lon_0=0 +lat_ts=30 +x_0=0 +y_0=0 +datum=WGS84 +ellps=WGS84 +units=m +no_defs") %>% 
+  filter(continent != "Antarctica",
+         !is.na(continent))
+
+# basemap for mapping. 
+world_base_coast <- rnaturalearth::ne_coastline(scale = "large", returnclass = "sf") %>% 
+  st_transform(crs = "+proj=cea +lon_0=0 +lat_ts=30 +x_0=0 +y_0=0 +datum=WGS84 +ellps=WGS84 +units=m +no_defs") %>% 
+  st_join(world_base_map) %>% 
+  filter(continent != "Antarctica")
+```
+
+```{r, coast-map}
+plot(world_base_coast %>% st_geometry())
+```
+
+
+Read in and wrangle data  
+
+```{r, read-pred-map-data, warning=FALSE}
+mess_gde_sf <- read_rds(here("output", "models", "mess_gde.rds")) %>% 
+  pluck("min_otu_100") %>% 
+  st_set_crs(crs_behr)
+
+mess_gdm_sf <- read_rds(here("output", "models", "mess_gdm.rds")) %>% 
+  pluck("min_otu_100") %>% 
+  st_set_crs(crs_behr)
+
+map_sf_gde <-read_rds(here("output", "spreadsheets", "full_preds_sf_gde.rds")) %>% 
+  pluck("min_otu_100") %>% 
+  st_set_crs(crs_behr) %>% 
+  st_join(mess_gde_sf %>% select(mess_binary), st_equals) %>% 
+  # mask out the values in non-analogous climate
+  mutate(
+    across(where(is.double), ~if_else(mess_binary == "non_analogous", NA_real_, .x), .names = "mask_{.col}")
+  ) 
+
+map_sf_filt_gde <- map_sf_gde[world_base_map, , op = st_intersects]
+
+map_sf_gdm <- read_rds(here("output", "spreadsheets", "full_preds_sf_gdm.rds")) %>% 
+  pluck("min_otu_100") %>% 
+  st_set_crs(crs_behr) %>% 
+  st_join(mess_gdm_sf %>% select(mess_binary), st_equals) %>% 
+  # mask out the values in non-analogous climate
+  mutate(
+    across(where(is.double), ~if_else(mess_binary == "non_analogous", NA_real_, .x), .names = "mask_{.col}")
+  ) 
+
+map_sf_filt_gdm <- map_sf_gdm[world_base_map, , op = st_intersects]
+
+# global freeze-line
+fl <- suppressWarnings(read_sf(here("data", "climate_poly", "freeze_line_smoothed.geojson"), crs = crs_behr))
+
+# posterior samples of beta parameters
+set.seed(9976)
+beta_posts_gde <- tidy_post(model_gde)$B %>% 
+  sample_n(500) %>% 
+  mutate(draw = row_number())
+
+set.seed(8436)
+beta_posts_gdm <- tidy_post(model_gdm)$B %>% 
+  sample_n(500) %>% 
+  mutate(draw = row_number())
+
+```
+
+
+
+### GDM
+
+```{r}
+map_sf_filt_gdm <- map_sf_filt_gdm %>% 
+  mutate(mess_binary_cols = if_else(mess_binary == "non_analogous", "gray", "transparent"))
+
+map_gdm <- ggplot() +
+  geom_sf(data = map_sf_filt_gdm, aes(fill = mask_.pred, color = mask_.pred)) +
+  scale_fill_viridis_c(option = "mako", direction = 1) +
+  scale_color_viridis_c(option = "mako", direction = 1, guide = NULL) +
+    geom_sf(data = map_sf_filt_gdm, 
+          color = map_sf_filt_gdm$mess_binary_cols,
+          fill = map_sf_filt_gdm$mess_binary_cols) +
+  geom_sf(data = world_base_coast, fill = "transparent") +
+  labs(fill = "GDM") +
+  theme_bw() +
+  theme(panel.grid = element_blank(),
+        legend.position = c(0.2, 0.3))
+```
+
+```{r, gdm-pred-map}
+map_gdm
+```
+
+
+### GDE
+
+```{r}
+map_sf_filt_gde <- map_sf_filt_gde %>% 
+  mutate(mess_binary_cols = if_else(mess_binary == "non_analogous", "gray", "transparent"))
+
+map_gde <- ggplot() +
+  geom_sf(data = map_sf_filt_gde, aes(fill = mask_.pred, color = mask_.pred)) +
+  scale_fill_viridis_c(option = "rocket", direction = 1) +
+  scale_color_viridis_c(option = "rocket", direction = 1, guide = NULL) +
+  geom_sf(data = map_sf_filt_gde, 
+          color = map_sf_filt_gde$mess_binary_cols,
+          fill = map_sf_filt_gde$mess_binary_cols) +
+  geom_sf(data = world_base_coast, fill = "transparent") +
+  labs(fill = "GDE") +
+  geom_sf(data = fl, color = "yellow", size = 0.4, alpha = 0.7) +
+  theme_bw() +
+  theme(panel.grid = element_blank(),
+        legend.position = c(0.2, 0.3))
+```
+
+```{r}
+map_gde
+```
+
+
+
+### 2D
+
+```{r}
+map_sf_combo <- st_join(map_sf_filt_gde, 
+                        map_sf_filt_gdm, 
+                        left = FALSE) %>%
+  filter(!duplicated(cell.x)) %>% 
+  select(mask_.pred.x, mask_.pred.y) %>% 
+  na.omit()
+
+color_df <- map_sf_combo %>% 
+  as_tibble() %>% 
+  select(mask_.pred.x, mask_.pred.y)
+
+# for some reason, when this document is rendered, rmarkdown doesn't recognize this function
+# so, saved the colors as an rds object to load
+# color_vec <- colors2d(data = color_df, colors = c("yellow", "green", "dodgerblue", "magenta"), xtrans = "log", ytrans = "log")
+# write_rds(color_vec, here("output", "spreadsheets", "colors_2d.rds"))
+color_vec <- read_rds(here("output", "spreadsheets", "colors_2d.rds"))
+
+```
+
+Scatterplot to use as color legend  
+
+```{r}
+map_2d_scatter <- ggplot(data = map_sf_combo, aes(x = mask_.pred.x, 
+                             y = mask_.pred.y)) +
+  geom_point(color = color_vec) +
+  labs(x = "GDE", y = "GDM") +
+  theme_bw() +
+  theme(panel.grid = element_blank())
+```
+
+```{r}
+map_2d_scatter
+```
+
+
+```{r}
+map_2d <- ggplot() +
+  geom_sf(data = world_base_map, fill = "gray", color = "gray") +
+  geom_sf(data = map_sf_combo, fill = color_vec, color = color_vec) +
+  geom_sf(data = world_base_coast) +
+  theme_bw() +
+  theme(panel.grid = element_blank()) 
+```
+
+```{r}
+map_2d
+```
+
+
+### Combo map
+
+```{r}
+combo_map <- map_gdm / map_gde / map_2d + plot_annotation(
+  tag_levels = "a", 
+  tag_suffix = ")")
+```
+
+```{r}
+combo_map
+```
+
+
+Write figure to file  
+
+```{r, eval=FALSE}
+ggsave(filename = here("output", "publication_figs", "map_fig.svg"),
+       plot = combo_map,
+       width = 36,
+       height = 22.5,
+       dpi = 300,
+       unit = "cm")
+```
+
+gd_var_map_fig.png### GD variation maps
+
+These are actually for supplementary, but I don't want to copy-paste all of that code.  
+
+#### GDM
+
+```{r}
+lims_gdm <- c(min(na.omit(map_sf_filt_gdm$mask_conf_low)), max(na.omit(map_sf_filt_gdm$mask_conf_high)))
+
+map_gdm_u95 <- ggplot() +
+  geom_sf(data = map_sf_filt_gdm, aes(fill = mask_conf_high, color = mask_conf_high)) +
+  scale_fill_viridis_c(option = "mako",
+                       direction = 1,
+                       limits = lims_gdm) +
+  scale_color_viridis_c(option = "mako",
+                        direction = 1,
+                        guide = "none", 
+                        limits = lims_gdm) +
+    geom_sf(data = map_sf_filt_gdm,
+          color = map_sf_filt_gdm$mess_binary_cols,
+          fill = map_sf_filt_gdm$mess_binary_cols) +
+  geom_sf(data = world_base_coast, fill = "transparent") +
+  labs(fill = "GDM, Upper 95% HDI") +
+  theme_insects()
+
+map_gdm_l95 <- ggplot() +
+  geom_sf(data = map_sf_filt_gdm, aes(fill = mask_conf_low, color = mask_conf_low)) +
+  scale_fill_viridis_c(option = "mako",
+                       direction = 1,
+                       limits = lims_gdm) +
+  scale_color_viridis_c(option = "mako",
+                        direction = 1,
+                        guide = "none", limits = lims_gdm) +
+    geom_sf(data = map_sf_filt_gdm, 
+          color = map_sf_filt_gdm$mess_binary_cols,
+          fill = map_sf_filt_gdm$mess_binary_cols) +
+  geom_sf(data = world_base_coast, fill = "transparent") +
+  labs(fill = "GDM, Lower 95% HDI") +
+  theme_insects()
+
+# map_gdm_range <- ggplot() +
+#   geom_sf(data = map_sf_filt_gdm, aes(fill = mask_.log_ci, color = mask_.log_ci)) +
+#   scale_fill_viridis_c(option = "mako", 
+#                        direction = 1) +
+#   scale_color_viridis_c(option = "mako",
+#                         direction = 1,
+#                         guide = "none") +
+#     geom_sf(data = map_sf_filt_gdm, 
+#           color = map_sf_filt_gdm$mess_binary_cols,
+#           fill = map_sf_filt_gdm$mess_binary_cols) +
+#   geom_sf(data = world_base_coast, fill = "transparent") +
+#   labs(fill = "GDM, Upper - Lower 95% HDI (Log)") +
+#   theme_insects()
+```
+
+#### GDE
+
+These are actually for supplementary, but I don't want to copy-paste all of that code.  
+
+```{r}
+lims_gde <- c(min(na.omit(map_sf_filt_gde$mask_conf_low)), max(na.omit(map_sf_filt_gde$mask_conf_high)))
+
+map_gde_u95 <- ggplot() +
+  geom_sf(data = map_sf_filt_gde, aes(fill = mask_conf_high, color = mask_conf_high)) +
+  scale_fill_viridis_c(option = "rocket",
+                       direction = 1,
+                       limits = lims_gde) +
+  scale_color_viridis_c(option = "rocket",
+                        direction = 1,
+                        guide = "none", limits = lims_gde) +
+    geom_sf(data = map_sf_filt_gde,
+          color = map_sf_filt_gde$mess_binary_cols,
+          fill = map_sf_filt_gde$mess_binary_cols) +
+  geom_sf(data = world_base_coast, fill = "transparent") +
+  labs(fill = "GDE, Upper 95% HDI") +
+  theme_insects()
+
+map_gde_l95 <- ggplot() +
+  geom_sf(data = map_sf_filt_gde, aes(fill = mask_conf_low, color = mask_conf_low)) +
+  scale_fill_viridis_c(option = "rocket",
+                       direction = 1,
+                       limits = lims_gde) +
+  scale_color_viridis_c(option = "rocket",
+                        direction = 1,
+                        guide = "none", limits = lims_gde) +
+    geom_sf(data = map_sf_filt_gde, 
+          color = map_sf_filt_gde$mess_binary_cols,
+          fill = map_sf_filt_gde$mess_binary_cols) +
+  geom_sf(data = world_base_coast, fill = "transparent") +
+  labs(fill = "GDE, Lower 95% HDI") +
+  theme_insects() 
+
+# map_gde_range <- ggplot() +
+#   geom_sf(data = map_sf_filt_gde, aes(fill = mask_.log_ci, color = mask_.log_ci)) +
+#   scale_fill_viridis_c(option = "rocket",
+#                        direction = 1) +
+#   scale_color_viridis_c(option = "rocket",
+#                         direction = 1,
+#                         guide = "none") +
+#     geom_sf(data = map_sf_filt_gde, 
+#           color = map_sf_filt_gde$mess_binary_cols,
+#           fill = map_sf_filt_gde$mess_binary_cols) +
+#   geom_sf(data = world_base_coast, fill = "transparent") +
+#   labs(fill = "GDE, Upper - Lower 95% HDI (Log)") +
+#   theme_insects()
+```
+
+
+#### Combo
+
+```{r}
+gd_var_map <-
+  map_gdm_u95 +
+  map_gdm_l95 +
+  map_gde_u95 + 
+  map_gde_l95 + 
+  plot_layout(ncol = 1) + 
+  plot_annotation(tag_levels = "a", tag_suffix = ")") 
+```
+
+```{r}
+gd_var_map
+```
+
+
+```{r}
+ggsave(filename = here("output", "publication_figs", "gd_var_map_fig.svg"),
+       plot = gd_var_map,
+       width = 36,
+       height = 72,
+       dpi = 300,
+       unit = "cm")
+```
+
+
+## Observed Maps
+
+Map helpers  
+
+```{r map-helpers-2}
+# for mapping. this will be smaller so plotting is faster
+world_base_map <- rnaturalearth::ne_countries(scale = "small", returnclass = "sf") %>%
+  select(continent, name_long) %>% 
+  st_transform(crs = "+proj=cea +lon_0=0 +lat_ts=30 +x_0=0 +y_0=0 +datum=WGS84 +ellps=WGS84 +units=m +no_defs") %>% 
+  filter(continent != "Antarctica")
+```
+
+
+Read in data  
+
+```{r, message=FALSE}
+spatial_df <- read_sf(here("output", "spreadsheets", "full_sf.geojson"), crs = crs_behr) %>% 
+  filter(num_otu >= 100)
+  
+fl <- suppressWarnings(read_sf(here("data", "climate_poly", "freeze_line_smoothed.geojson"), crs = crs_behr))
+```
+
+
+
+```{r}
+obs_gde_map <- ggplot() +
+  geom_sf(data = world_base_map, fill = "lightgray", color = "lightgray") +
+  geom_sf(data = spatial_df, aes(fill = gde, color = gde)) +
+  scale_fill_viridis_c(option = "rocket", 
+                       direction = 1) +
+  scale_color_viridis_c(option = "rocket",
+                        direction = 1,
+                        guide = NULL) +
+  labs(fill = "GDE") +
+  geom_sf(data = fl, color = "yellow", size = 0.4, alpha = 0.7) +
+  theme_bw() +
+  theme(panel.grid = element_blank(),
+        legend.position = c(0.2, 0.3))
+
+obs_gdm_map <- ggplot() +
+  geom_sf(data = world_base_map, fill = "lightgray", color = "lightgray") +
+  geom_sf(data = spatial_df, aes(fill = gdm, color = gdm)) +
+  scale_fill_viridis_c(option = "mako",
+                       direction = 1) +
+  scale_color_viridis_c(option = "mako",
+                        direction = 1,
+                        guide = "none") +
+  labs(fill = "GDM") +
+  theme_bw() +
+  theme(panel.grid = element_blank(),
+        legend.position = c(0.2, 0.3))
+```
+
+2D map  
+
+```{r}
+
+color_df_obs <- spatial_df %>% 
+  as_tibble() %>% 
+  select(gde, gdm)
+
+# for some reason, when this document is rendered, rmarkdown doesn't recognize this function
+# so, saved the colors as an rds object to load
+# color_vec_obs <- colors2d(data = color_df_obs, colors = c("yellow", "green", "dodgerblue", "magenta"), xtrans = "log", ytrans = "log")
+# write_rds(color_vec_obs, here("output", "spreadsheets", "colors_2d_observed.rds"))
+color_vec_obs <- read_rds(here("output", "spreadsheets", "colors_2d_observed.rds"))
+
+obs_2d_scatter <- ggplot(data = spatial_df, aes(x = gde, 
+                             y = gdm)) +
+  geom_point(color = color_vec_obs) +
+  labs(x = "GDE", y = "GDM") +
+  theme_bw() + 
+  theme(panel.grid = element_blank())
+
+obs_2d_map <- ggplot() +
+  geom_sf(data = world_base_map, fill = "lightgray", color = "lightgray") +
+  geom_sf(data = spatial_df, fill = color_vec_obs, color = color_vec_obs) +
+  theme_bw() +
+  # annotation_custom(ggplotGrob(obs_2d_scatter),
+  #                   xmin = -19000000, 
+  #                   xmax = -10000000,
+  #                   ymin = -7000000, 
+  #                   ymax = 1100000) +
+  theme(panel.grid = element_blank())
+
+```
+
+```{r}
+obs_2d_map
+```
+
+
+Combined map  
+
+```{r}
+obs_combo_map <- obs_gdm_map / obs_gde_map / obs_2d_map + plot_annotation(
+  tag_levels = "A", 
+  tag_suffix = ")")
+```
+
+```{r}
+obs_combo_map
+```
+
+
+Write map to file  
+
+```{r}
+ggsave(filename = here("output", "publication_figs", "obs_map_fig.pdf"),
+       plot = obs_combo_map,
+       width = 183,
+       height = 296,
+       dpi = 300,
+       unit = "mm")
+```
+
+
+## Full map figure
+Combination of the prediction and observed maps for the manuscript. Code from the `Prediction Maps` and `Observed Maps` sections needs to be run before this one.  
+
+I'm going to add in the 2D scatterplots in inkscape because I got fed up with trying to make them fit well in R
+
+```{r}
+full_combo_map <- 
+  (obs_gdm_map + map_gdm) / (obs_gde_map + map_gde) / (obs_2d_map + map_2d) +
+  plot_annotation(tag_levels = "a", tag_suffix = ")") &
+  theme(legend.title = element_text(size = 7),
+        legend.text = element_text(size = 5),
+        legend.key.size = unit(2, "mm"),
+        plot.tag = element_text(size = 12))
+
+```
+
+```{r}
+full_combo_map
+```
+
+Write to file  
+
+```{r}
+ggsave(filename = here("output", "publication_figs", "full_map_fig.svg"),
+       plot = full_combo_map,
+       width = 183,
+       height = 140,
+       dpi = 300,
+       unit = "mm")
+```
+
+
+
+## Hotspot maps
+
+Map helpers  
+
+```{r map-helpers-3}
+
+# for mapping. 
+world_base_map <- rnaturalearth::ne_countries(scale = "small", returnclass = "sf") %>%
+  select(continent, name_long) %>% 
+  st_transform(crs = "+proj=cea +lon_0=0 +lat_ts=30 +x_0=0 +y_0=0 +datum=WGS84 +ellps=WGS84 +units=m +no_defs") %>% 
+  filter(continent != "Antarctica")
+
+# basemap for mapping. 
+world_base_coast <- rnaturalearth::ne_coastline(scale = "large", returnclass = "sf") %>% 
+  st_transform(crs = "+proj=cea +lon_0=0 +lat_ts=30 +x_0=0 +y_0=0 +datum=WGS84 +ellps=WGS84 +units=m +no_defs") %>% 
+  st_join(world_base_map) %>% 
+  filter(continent != "Antarctica")
+
+```
+
+Read in and wrangle data  
+
+```{r}
+mess_gde_sf <- read_rds(here("output", "models", "mess_gde.rds")) %>% 
+  pluck("min_otu_100") %>% 
+  st_set_crs(crs_behr)
+
+mess_gdm_sf <- read_rds(here("output", "models", "mess_gdm.rds")) %>% 
+  pluck("min_otu_100") %>% 
+  st_set_crs(crs_behr)
+
+map_sf_gde <-read_rds(here("output", "spreadsheets", "full_preds_sf_gde.rds")) %>% 
+  pluck("min_otu_100") %>% 
+  st_set_crs(crs_behr) %>% 
+  st_join(mess_gde_sf %>% select(mess_binary), st_equals) %>% 
+  # mask out the values in non-analogous climate
+  mutate(
+    across(where(is.double), ~if_else(mess_binary == "non_analogous", NA_real_, .x), .names = "mask_{.col}")
+  ) 
+
+map_sf_filt_gde <- map_sf_gde[world_base_map, , op = st_intersects]
+
+map_sf_gdm <- read_rds(here("output", "spreadsheets", "full_preds_sf_gdm.rds")) %>% 
+  pluck("min_otu_100") %>% 
+  st_set_crs(crs_behr) %>% 
+  st_join(mess_gdm_sf %>% select(mess_binary), st_equals) %>% 
+  # mask out the values in non-analogous climate
+  mutate(
+    across(where(is.double), ~if_else(mess_binary == "non_analogous", NA_real_, .x), .names = "mask_{.col}")
+  ) 
+
+map_sf_filt_gdm <- map_sf_gdm[world_base_map, , op = st_intersects]
+
+# global freeze-line
+fl <- suppressWarnings(read_sf(here("data", "climate_poly", "freeze_line_smoothed.geojson"), crs = crs_behr))
+
+
+spatial_df <- read_sf(here("output", "spreadsheets", "full_sf.geojson"), crs = crs_behr) %>% 
+  filter(num_otu >= 100)
+
+
+# only keep the predictions that overlap with a map polygon
+map_sf_filt_gde <- map_sf_gde[world_base_map, , op = st_intersects]
+
+map_sf_filt_gdm <- map_sf_gdm[world_base_map, , op = st_intersects]
+  
+```
+
+### 2D
+
+
+#### Hotspot
+
+Hotspot wrangling  
+
+```{r}
+#### Predicted hotspots
+# filter data for "hotspots" with the top 10% of values for GDE and GDM
+map_sf_gde_hs <- map_sf_filt_gde %>% 
+  arrange(desc(mask_.pred)) %>% 
+  slice_head(prop = 0.1)
+
+map_sf_gdm_hs <- map_sf_filt_gdm %>% 
+  arrange(desc(mask_.pred)) %>% 
+  slice_head(prop = 0.1)
+
+# only keep cells that overlap between the two data sets
+map_sf_hs <- map_sf_gdm_hs[map_sf_gde_hs, , op = st_intersects]
+
+##### Observed hotspots
+map_obs_gde <- spatial_df %>% 
+  select(gde) %>% 
+  arrange(desc(gde)) %>% 
+  slice_head(prop = 0.1)
+
+map_obs_gdm <- spatial_df %>% 
+  select(gdm) %>% 
+  arrange(desc(gdm)) %>% 
+  slice_head(prop = 0.1)
+
+map_obs_hs <- map_obs_gdm[map_obs_gde, , op = st_intersects]
+```
+
+
+Hotspot map of predicted values  
+
+```{r}
+hotspot_predicted <- ggplot() +
+  geom_sf(data = world_base_coast, fill = "transparent") +
+  geom_sf(data = map_sf_hs, fill = "red", color = "red") +
+  theme_insects()
+
+```
+
+```{r, hotspot-pred-map}
+hotspot_predicted
+```
+
+
+Observed hotspot map  
+
+```{r}
+hotspot_observed <- ggplot() +
+  geom_sf(data = world_base_coast, fill = "transparent") +
+  geom_sf(data = spatial_df, fill = "gray", color = "gray") +
+  geom_sf(data = map_obs_hs, fill = "red", color = "red") +
+  theme_insects() 
+```
+
+```{r, hotspot-obs-map}
+hotspot_observed
+```
+
+
+
+#### Coldspot
+
+```{r}
+#### Predicted coldspots
+# filter data for "coldspots" with the top 15% of values for GDE and GDM
+map_sf_gde_cs <- map_sf_filt_gde %>% 
+  arrange(mask_.pred) %>% 
+  slice_head(prop = 0.1) 
+
+map_sf_gdm_cs <- map_sf_filt_gdm %>% 
+  arrange(mask_.pred) %>% 
+  slice_head(prop = 0.1)
+
+# only keep cells that overlap between the two data sets
+map_sf_cs <- map_sf_gdm_cs[map_sf_gde_cs, , op = st_intersects]
+
+##### Observed coldspots
+map_obs_gde_cs <- spatial_df %>% 
+  select(gde) %>% 
+  arrange(gde) %>% 
+  slice_head(prop = 0.1) 
+
+map_obs_gdm_cs <- spatial_df %>% 
+  select(gdm) %>% 
+  arrange(gdm) %>% 
+  slice_head(prop = 0.1)
+
+map_obs_cs <- map_obs_gdm_cs[map_obs_gde_cs, , op = st_intersects]
+```
+
+Coldspot map of predicted values  
+
+```{r}
+coldspot_predicted <- ggplot() +
+  geom_sf(data = world_base_coast, fill = "transparent") +
+  geom_sf(data = map_sf_cs, fill = "blue", color = "blue") +
+  theme_insects()
+```
+
+```{r, coldspot-pred-map}
+coldspot_predicted
+```
+
+
+Observed coldspot map  
+
+```{r}
+coldspot_observed <- ggplot() +
+  geom_sf(data = world_base_coast, fill = "transparent") +
+  geom_sf(data = spatial_df, fill = "gray", color = "gray") +
+  geom_sf(data = map_obs_cs, fill = "blue", color = "blue") +
+  theme_insects()
+```
+
+```{r}
+coldspot_observed
+```
+
+
+### GDM
+
+#### Predicted
+```{r}
+hotspot_predicted_gdm <- ggplot() +
+  geom_sf(data = world_base_coast, fill = "transparent") +
+  geom_sf(data = map_sf_gdm_hs, fill = "red", color = "red") +
+  theme_insects() 
+```
+
+```{r}
+hotspot_predicted_gdm
+```
+
+
+```{r}
+coldspot_predicted_gdm <- ggplot() +
+  geom_sf(data = world_base_coast, fill = "transparent") +
+  geom_sf(data = map_sf_gdm_cs, fill = "blue", color = "blue") +
+  theme_insects()
+```
+
+```{r}
+coldspot_predicted_gdm
+```
+
+
+#### Observed
+
+```{r}
+hotspot_observed_gdm <- ggplot() +
+  geom_sf(data = world_base_coast, fill = "transparent") +
+  geom_sf(data = spatial_df, fill = "gray", color = "gray") +
+  geom_sf(data = map_obs_gdm, fill = "red", color = "red") +
+  theme_insects()
+```
+
+```{r}
+hotspot_observed_gdm
+```
+
+
+```{r}
+coldspot_observed_gdm <- ggplot() +
+  geom_sf(data = world_base_coast, fill = "transparent") +
+  geom_sf(data = spatial_df, fill = "gray", color = "gray") +
+  geom_sf(data = map_obs_gdm_cs, fill = "blue", color = "blue") +
+  theme_insects()
+```
+
+```{r}
+coldspot_observed_gdm
+```
+
+
+### GDE
+
+#### Predicted  
+
+```{r}
+hotspot_predicted_gde <- ggplot() +
+  geom_sf(data = world_base_coast, fill = "transparent") +
+  geom_sf(data = map_sf_gde_hs, fill = "red", color = "red") +
+  theme_insects() 
+```
+
+```{r}
+hotspot_predicted_gde
+```
+
+
+```{r}
+coldspot_predicted_gde <- ggplot() +
+  geom_sf(data = world_base_coast, fill = "transparent") +
+  geom_sf(data = map_sf_gde_cs, fill = "blue", color = "blue") +
+  theme_insects()
+```
+
+```{r}
+coldspot_predicted_gde
+```
+
+
+#### Observed
+
+```{r}
+hotspot_observed_gde <- ggplot() +
+  geom_sf(data = world_base_coast, fill = "transparent") +
+  geom_sf(data = spatial_df, fill = "gray", color = "gray") +
+  geom_sf(data = map_obs_gde, fill = "red", color = "red") +
+  theme_insects()
+```
+
+```{r}
+hotspot_observed_gde
+```
+
+
+```{r}
+coldspot_observed_gde <- ggplot() +
+  geom_sf(data = world_base_coast, fill = "transparent") +
+  geom_sf(data = spatial_df, fill = "gray", color = "gray") +
+  geom_sf(data = map_obs_gde_cs, fill = "blue", color = "blue") +
+  theme_insects()
+```
+
+```{r}
+coldspot_observed_gde
+```
+
+
+#### Combo 
+
+I added titles and axis labels in inkscape because ggplot was being too fussy.  
+
+```{r}
+combo_hs_cs_map <- 
+  (hotspot_predicted + hotspot_observed) /
+  (coldspot_predicted + coldspot_observed) /
+  (hotspot_predicted_gdm + hotspot_observed_gdm) /
+  (coldspot_predicted_gdm + coldspot_observed_gdm) /
+  (hotspot_predicted_gde + hotspot_observed_gde) /
+  (coldspot_predicted_gde + coldspot_observed_gde) +
+  plot_annotation(
+  tag_levels = "a", 
+  tag_suffix = ")",
+  theme = theme(plot.title = element_text(size = 30)))
+```
+
+```{r}
+combo_hs_cs_map
+```
+
+
+Write to file  
+
+```{r, eval=FALSE}
+ggsave(filename = here("output", "publication_figs", "supp_hotspot_coldspot_map_fig.svg"),
+       plot = combo_hs_cs_map,
+       width = 36,
+       height = 72,
+       dpi = 300,
+       unit = "cm")
+```
+
+
+### Observed 2D scatterplot
+
+```{r}
+ggplot() +
+  geom_sf(data = world_base_map, fill = "lightgray", color = "lightgray") +
+  geom_sf(data = spatial_df, fill = color_vec_obs, color = color_vec_obs) +
+  # geom_sf(data = psf) +
+  # geom_sf(data = psf2) +
+  # geom_sf(data = psf3, fill = "transparent", color = "black") +
+  theme_insects()
+```
+
+```{r}
+ggplot(data = spatial_df, aes(x = gde, 
+                             y = gdm)) +
+  geom_point(color = color_vec_obs) +
+  labs(x = "GDE", y = "GDM") +
+  theme_insects()
+```
+
+
+
+
+# Supp Figs
+
+## Coalescent simulations
+
+Read in data.  
+
+```{r}
+pi_combo <- read_csv(here("output", "spreadsheets", "coalescent_simulations_output.csv"))
+```
+
+Calculate statistics.  
+
+```{r}
+combo_gde <- pi_combo %>% 
+  group_by(demography, sim_num) %>% 
+  group_modify(~enframe(hill_calc(.x$pi), name = NULL, value = "gde")) %>% 
+  mutate(demography = fct_reorder(demography, gde)) %>% 
+  ungroup()
+
+
+combo_gdm <- pi_combo %>% 
+  group_by(demography, sim_num) %>% 
+  group_modify(~enframe(sqrt(mean(.x$pi)), name = NULL, value = "gdm")) %>% 
+  mutate(demography = fct_reorder(demography, gdm)) %>% 
+  ungroup()
+```
+
+
+
+```{r, combo-plots}
+# density plot
+demo_gde_plot <- ggplot(data = combo_gde, aes(x = gde, y = demography)) +
+  geom_boxplot() +
+  geom_jitter(alpha = 0.5, height = 0.2) +
+  labs(x = "GDE") +
+  theme_insects() +
+  theme(axis.title.y = element_blank())
+
+demo_gdm_plot <- ggplot(data = combo_gdm, aes(x = gdm, y = demography)) +
+  geom_boxplot() +
+  geom_jitter(alpha = 0.5, height = 0.2) +
+  labs(x = "GDM") +
+  theme_insects() +
+  theme(axis.title.y = element_blank())
+
+
+demo_combo_plot <- demo_gdm_plot / demo_gde_plot + 
+  patchwork::plot_annotation(tag_levels = "A",
+                             tag_suffix = ")")
+
+demo_combo_plot
+```
+
+Save to a file  
+
+```{r}
+ggsave(filename = here("output", "publication_figs", "coalescent_summary_fig.pdf"),
+       plot = demo_combo_plot,
+       width = 24,
+       height = 15,
+       dpi = 300,
+       unit = "cm")
+```
+
+
+
+## Order outliers
+
+Read in data and filter, removing outlier orders. I'm only considering the outlier data set that retains the same filtering regime as the original data to keep things comparable. I initially explored multiple filtering regimes since the number of cells is drastically reduced, but the distributions look similar and it's more logical to only compare the data sets with the same filtering regime.   
+
+
+
+```{r, warning=FALSE}
+pw_pi <- read_csv(here("output", "spreadsheets", "cell_medium_3_10_pi.csv"))
+
+analysis_data <- read_sf(here("output", "spreadsheets", "full_sf.geojson"),
+                         crs = crs_behr) %>% 
+  filter(num_otu >= 100)
+
+pw_pi_filt <- pw_pi %>% 
+  filter(cell %in% analysis_data$cell)
+
+outlier_orders <- c("Diptera", "Lepidoptera", "Hymenoptera")
+
+gd_no_outliers_100 <- pw_pi_filt %>% 
+  filter(order %notin% outlier_orders) %>% 
+  group_by(cell) %>% 
+  filter(uniqueN(bin_uri) >= 100) %>% 
+  summarize(hill = hill_calc(pi),
+            avg_pi = sqrt(mean(pi))) %>% 
+  mutate(min_otu = "Top 3 orders removed\n(N=82)")
+
+gd_everything <- pw_pi_filt %>% 
+  group_by(cell) %>% 
+  summarize(hill = hill_calc(pi),
+            avg_pi = sqrt(mean(pi))) %>% 
+  mutate(min_otu = "Original\n(N=245)")
+
+gd_all <- bind_rows(
+  gd_no_outliers_100,
+  gd_everything
+)
+
+glimpse(gd_all)
+
+```
+
+Boxplots comparing the GDE and GDM distributions.  
+
+```{r}
+gde_box <- gd_all %>% 
+  ggplot(aes(x = min_otu, y = hill)) +
+  geom_boxplot(fill = "transparent") +
+  geom_jitter(width = 0.25, alpha = 0.8) +
+  labs(y = "GDE") +
+  coord_flip() +
+  theme_insects() +
+  theme(axis.title.y = element_blank())
+
+gdm_box <- gd_all %>% 
+  ggplot(aes(x = min_otu, y = avg_pi)) +
+  geom_boxplot(fill = "transparent") +
+  geom_jitter(width = 0.25, alpha = 0.8) +
+  labs(y = "GDM") +
+  coord_flip() +
+  theme_insects() +
+  theme(axis.title.y = element_blank())
+
+all_box <- gdm_box / gde_box + 
+  plot_annotation(tag_levels = "a", tag_suffix = ")")
+```
+
+```{r}
+all_box
+```
+
+
+Save plot to file  
+
+```{r, eval=FALSE}
+ggsave(filename = here("output", "publication_figs", "gd_remove_outliers_supp_fig.svg"),
+       plot = all_box,
+       width = 24,
+       height = 15,
+       dpi = 300,
+       unit = "cm")
+```
+
+
+Welch's t-tests to determine whether the distribution of GD of the complete data set is significantly different from the distribution of GD with the top three orders removed, while keeping the minimum number of OTU filter the same.   
+
+GDE does not significantly differ (Cohen's D = -0.15, p = 0.335), but GDM does (Cohen's D = -0.50, p = 0.002).
+
+```{r}
+gd_welch <- gd_all %>% 
+  #filter(min_otu %in% c("150", "everything")) %>% 
+  droplevels()
+
+welch_gde <- t.test(hill ~ min_otu, data = gd_welch, var.equal = FALSE)
+welch_gdm <- t.test(avg_pi ~ min_otu, data = gd_welch, var.equal = FALSE)
+
+cohen_gde <- cohens_d(hill ~ min_otu, data = gd_welch, pooled_sd = FALSE)
+
+cohen_gdm <- cohens_d(avg_pi ~ min_otu, data = gd_welch, pooled_sd = FALSE)
+
+welch_gde
+cohen_gde
+
+welch_gdm
+cohen_gdm
+```
+
+## Model selection fig
+
+### GDE 
+```{r}
+cv_mult_reg_frz <- read_rds(here("output", "models", "proj_pred_gde.rds"))
+```
+
+Plot the validation results relative to the full model
+```{r}
+# plot the validation results, this time relative to the full model
+plot(cv_mult_reg_frz, stats = c('elpd', 'rmse'), deltas = TRUE)
+```
+
+Write to file.  
+
+```{r}
+pdf(file = here("output", "publication_figs", "supp_model_selection_fig_gde.pdf"), 
+    width = 9.44,
+    height = 5.91)
+
+plot(cv_mult_reg_frz, stats = c('elpd', 'rmse'), deltas = TRUE)
+
+dev.off()
+```
+
+### GDM
+```{r}
+cv_mult_gdm <- read_rds(here("output", "models", "proj_pred_gdm.rds"))
+```
+
+Plot the validation results relative to the full model
+```{r}
+# plot the validation results, this time relative to the full model
+plot(cv_mult_gdm, stats = c('elpd', 'rmse'), deltas = TRUE)
+```
+
+Write to file.  
+
+```{r}
+pdf(file = here("output", "publication_figs", "supp_model_selection_fig_gdm.pdf"), 
+    width = 9.44,
+    height = 5.91)
+
+plot(cv_mult_gdm, stats = c('elpd', 'rmse'), deltas = TRUE)
+
+dev.off()
+```
+
+
+## MESS Maps
+Multivariate Environmental Similarity Surfaces comparing the environmental space in the observed data compared to the global distribution that we projected to.  
+
+Map helpers  
+
+```{r map-helpers-4}
+pal <- wes_palette("Zissou1", 100, type = "continuous")
+
+# for clipping. this will be smaller so plotting is faster
+world_base_map <- rnaturalearth::ne_countries(scale = "small", returnclass = "sf") %>%
+  select(continent, name_long) %>% 
+  st_transform(crs = "+proj=cea +lon_0=0 +lat_ts=30 +x_0=0 +y_0=0 +datum=WGS84 +ellps=WGS84 +units=m +no_defs") %>% 
+  filter(continent != "Antarctica")
+
+# for mapping. 
+world_base_coast <- rnaturalearth::ne_coastline(scale = "small", returnclass = "sf") %>% 
+  st_transform(crs = "+proj=cea +lon_0=0 +lat_ts=30 +x_0=0 +y_0=0 +datum=WGS84 +ellps=WGS84 +units=m +no_defs") %>% 
+  st_join(world_base_map) %>% 
+  filter(continent != "Antarctica")
+```
+
+
+### GDE
+
+Read in and filter data.  
+
+```{r}
+model_data <- read_csv(here("output", "spreadsheets", "model_data.csv"))
+
+# filter to the df used for modeling
+new_stab_gde <- model_data %>% 
+  select(
+    all_of(colnames(model_gde$X)[-1])
+    )
+```
+
+Plot the MESS map for GDE.  
+
+```{r}
+mess_gde_sf <- mess_gdm_sf <- read_sf(here("output", "spreadsheets", "mess_gde.geojson"),
+                       crs = crs_behr)
+
+mess_gde_sf_filt <- mess_gde_sf[world_base_map, , op = st_intersects]
+
+
+mess_gde_map <- ggplot() +
+  geom_sf(data = mess_gde_sf_filt, aes(color = mess_gde, fill = mess_gde)) +
+  scale_color_gradient2(low = "#d7191c", 
+                       mid = "#f7f7f7", 
+                       high = "#2c7bb6",
+                       na.value = "transparent",
+                       guide = "none") +
+  scale_fill_gradient2(low = "#d7191c", 
+                       mid = "#f7f7f7", 
+                       high = "#2c7bb6",
+                       na.value = "transparent") +
+  geom_sf(data = world_base_coast, fill = "transparent") +
+  labs(fill = "GDE") +
+  theme_minimal() 
+
+```
+
+```{r}
+mess_gde_map
+```
+
+
+### GDM
+
+Read in and filter data.  
+
+```{r}
+model_data <- read_csv(here("output", "spreadsheets", "model_data.csv"))
+
+# filter to the df used for modeling
+new_stab_gdm <- model_data %>% 
+  select(
+    all_of(colnames(model_gdm$X)[-1])
+    )
+```
+
+Plot the MESS map for GDM.  
+
+```{r}
+mess_gdm_sf <- read_sf(here("output", "spreadsheets", "mess_gdm.geojson"),
+                       crs = crs_behr)
+  
+
+mess_gdm_sf_filt <- mess_gdm_sf[world_base_map, , op = st_intersects]
+
+
+mess_gdm_map <- ggplot() +
+  geom_sf(data = mess_gdm_sf_filt, aes(color = mess_gdm, fill = mess_gdm)) +
+  scale_color_gradient2(low = "#d7191c", 
+                       mid = "#f7f7f7", 
+                       high = "#2c7bb6",
+                       na.value = "transparent",
+                       guide = "none") +
+  scale_fill_gradient2(low = "#d7191c", 
+                       mid = "#f7f7f7", 
+                       high = "#2c7bb6",
+                       na.value = "transparent") +
+  geom_sf(data = world_base_coast, fill = "transparent") +
+  labs(fill = "GDM") +
+  theme_minimal() 
+
+```
+
+```{r}
+mess_gdm_map
+```
+
+
+### Final figure
+
+```{r}
+mess_combo <- mess_gde_map / mess_gdm_map + plot_annotation(
+  tag_levels = "a", 
+  tag_suffix = ")")
+```
+
+```{r}
+mess_combo
+```
+
+
+Write to file.  
+
+```{r, eval=FALSE}
+ggsave(filename = here("output", "publication_figs", "supp_mess_fig.svg"),
+       plot = mess_combo,
+       width = 36,
+       height = 22.5,
+       dpi = 300,
+       unit = "cm")
+```
+
+
+
+## Predictors
+
+Map helpers  
+
+```{r map-helpers-5}
+pal <- wes_palette("Zissou1", 100, type = "continuous")
+
+# for clipping. this will be smaller so plotting is faster
+world_base_map <- rnaturalearth::ne_countries(scale = "small", returnclass = "sf") %>%
+  select(continent, name_long) %>% 
+  st_transform(crs = "+proj=cea +lon_0=0 +lat_ts=30 +x_0=0 +y_0=0 +datum=WGS84 +ellps=WGS84 +units=m +no_defs") %>% 
+  filter(continent != "Antarctica")
+
+# for mapping. 
+world_base_coast <- rnaturalearth::ne_coastline(scale = "small", returnclass = "sf") %>% 
+  st_transform(crs = "+proj=cea +lon_0=0 +lat_ts=30 +x_0=0 +y_0=0 +datum=WGS84 +ellps=WGS84 +units=m +no_defs") %>% 
+  st_join(world_base_map) %>% 
+  filter(continent != "Antarctica")
+```
+
+Read in data  
+
+```{r}
+gde_predictors <- read_sf(here("output", "spreadsheets", "global_pred_intervals_gde.geojson"),
+                          crs = "+proj=cea +lon_0=0 +lat_ts=30 +x_0=0 +y_0=0 +datum=WGS84 +ellps=WGS84 +units=m +no_defs")
+
+gdm_predictors <- read_sf(here("output", "spreadsheets", "global_pred_intervals_gdm.geojson"),
+                          crs = "+proj=cea +lon_0=0 +lat_ts=30 +x_0=0 +y_0=0 +datum=WGS84 +ellps=WGS84 +units=m +no_defs") %>% 
+  select(current_medium_bio_15)
+
+all_predictors <- st_join(gde_predictors, gdm_predictors, join = st_equals) %>% 
+  na.omit() %>% 
+  select(contains("current"))
+  
+all_predictors <- all_predictors[world_base_map, , op = st_intersects]
+
+colnames(all_predictors)[colnames(all_predictors) == "current_medium_bio_13"] <- "WET"
+colnames(all_predictors)[colnames(all_predictors) == "current_medium_bio_5"] <- "WARM"
+colnames(all_predictors)[colnames(all_predictors) == "current_medium_bio_2"] <- "Temp. Seasonality"
+colnames(all_predictors)[colnames(all_predictors) == "current_medium_bio_15"] <- "Precip. Seasonality"
+```
+
+Mapping function  
+
+```{r}
+plot_predictor <- function(variable) {
+  pred_plot <- 
+    ggplot() +
+    geom_sf(data = all_predictors, aes(fill = .data[[variable]], color = .data[[variable]])) +
+    # scale_fill_gradientn(colors = pal) +
+    # scale_color_gradientn(colors = pal, guide = NULL) + 
+    scale_fill_viridis_c() +
+    scale_color_viridis_c(guide = NULL) +
+    geom_sf(data = world_base_coast, fill = "transparent") +
+    labs(fill = variable) +
+    theme_insects() +
+    theme(legend.text = element_text(size = 10),
+          legend.title = element_text(size = 14))
+  
+  return(pred_plot)
+  
+}
+```
+
+
+Make maps  
+
+```{r}
+pred_maps <- map(colnames(all_predictors)[-5], plot_predictor)
+```
+
+
+
+```{r}
+predictor_maps_combo <- pred_maps[[1]] + 
+  pred_maps[[2]] + 
+  pred_maps[[3]] + 
+  pred_maps[[4]]
+
+predictor_maps_combo
+```
+
+
+Write to a file  
+
+```{r}
+ggsave(filename = here("output", "publication_figs", "supp_predictor_maps.pdf"),
+       plot = predictor_maps_combo,
+       width = 36,
+       height = 22.5,
+       dpi = 300,
+       unit = "cm")
+```
+
+
+
+## Per-order GD
+
+Map helpers
+
+```{r map-helpers-6}
+# for mapping. 
+world_base_map <- rnaturalearth::ne_countries(scale = "small", returnclass = "sf") %>%
+  select(continent, name_long) %>% 
+  st_transform(crs = "+proj=cea +lon_0=0 +lat_ts=30 +x_0=0 +y_0=0 +datum=WGS84 +ellps=WGS84 +units=m +no_defs") %>% 
+  filter(continent != "Antarctica")
+
+# basemap for mapping. 
+world_base_coast <- rnaturalearth::ne_coastline(scale = "large", returnclass = "sf") %>% 
+  st_transform(crs = "+proj=cea +lon_0=0 +lat_ts=30 +x_0=0 +y_0=0 +datum=WGS84 +ellps=WGS84 +units=m +no_defs") %>% 
+  st_join(world_base_map) %>% 
+  filter(continent != "Antarctica")
+```
+
+
+Read in and wrangle the data  
+
+```{r}
+# sf data set for mapping
+full_sf_100 <- read_sf(here("output", "spreadsheets", "full_sf.geojson"),
+                   crs = crs_behr) %>% 
+  filter(num_otu >= 100)
+
+raw_pi <- read_csv(here("output", "spreadsheets", "cell_medium_3_10_pi.csv"))
+
+outlier_orders <- c("Diptera", "Lepidoptera", "Hymenoptera")
+
+pi_ordered <- raw_pi %>% 
+  group_by(order) %>% 
+  arrange(desc(pi)) %>% 
+  mutate(index = row_number()) %>% 
+  ungroup()
+
+pi_order_count <- pi_ordered %>% 
+  group_by(cell) %>% 
+  count(order) %>% 
+  mutate(prop_order = n / sum(n)) %>% 
+  ungroup()
+
+pi_outlier <- pi_ordered %>% 
+  filter(order %in% outlier_orders)
+
+pi_no_outlier <- pi_ordered %>% 
+  filter(order %notin% outlier_orders)
+```
+
+
+### Order data sets
+
+
+Get data sets for each order  
+
+```{r}
+outlier_df_list <- map(outlier_orders, ~order_filter(.x, analysis_data = full_sf_100))
+
+names(outlier_df_list) <- outlier_orders
+```
+
+
+Convert the data sets to sf for mapping
+```{r}
+# function for conversion
+conv_to_sf <- function(df) {
+  left_join(data_sf_coords, df, by = "cell") %>% 
+    na.omit()
+}
+
+data_sf_coords <- full_sf_100 %>% 
+  select(cell, num_otu)
+
+outlier_df_list_sf <- map(outlier_df_list, conv_to_sf)
+
+```
+
+
+Make maps  
+
+```{r}
+
+# list of maps with the colors scaled to the global minimum and maximum
+outlier_maps_scaled_gdm <- map2(outlier_df_list_sf, 
+                                names(outlier_df_list_sf), 
+                                ~map_order(.x, .y, scale_guide = TRUE, sumstat = "gdm"))
+
+outlier_maps_scaled_gde <- map2(outlier_df_list_sf, 
+                              
+                                  names(outlier_df_list_sf), 
+                                ~map_order(.x, .y, scale_guide = TRUE, sumstat = "gde"))
+
+# list of maps with the colors varying per data set
+outlier_maps_gdm <- map2(outlier_df_list_sf, 
+                     names(outlier_df_list_sf), 
+                     ~map_order(.x, .y, scale_guide = FALSE, sumstat = "gdm"))
+
+outlier_maps_gde <- map2(outlier_df_list_sf, 
+                     names(outlier_df_list_sf), 
+                     ~map_order(.x, .y, scale_guide = FALSE, sumstat = "gde"))
+
+# Include observed data map.
+# scaled
+obs_map_scaled_gdm <- map_order(full_sf_100, order_name = "Observed data", sumstat = "gdm")
+
+obs_map_scaled_gde <- map_order(full_sf_100, order_name = "Observed data", sumstat = "gde")
+
+# not scaled
+obs_map_gdm <- map_order(full_sf_100, order_name = "Observed data", scale_guide = FALSE, sumstat = "gdm")
+
+obs_map_gde <- map_order(full_sf_100, order_name = "Observed data", scale_guide = FALSE, sumstat = "gde")
+```
+
+
+Statistical tests  
+
+```{r}
+
+# I could make a loop, but whatever
+t_gde_lep <- tidy_ttest(outlier_df_list$Lepidoptera$gde, full_sf_100$gde, order = "Lepidoptera", sumstat = "GDE")
+t_gde_dip <- tidy_ttest(outlier_df_list$Diptera$gde, full_sf_100$gde, order = "Diptera", sumstat = "GDE")
+t_gde_hym <- tidy_ttest(outlier_df_list$Hymenoptera$gde, full_sf_100$gde, order = "Hymenoptera", sumstat = "GDE")
+
+t_gdm_lep <- tidy_ttest(outlier_df_list$Lepidoptera$gdm, full_sf_100$gdm, order = "Lepidoptera", sumstat = "GDM")
+t_gdm_dip <- tidy_ttest(outlier_df_list$Diptera$gdm, full_sf_100$gdm, order = "Diptera", sumstat = "GDM")
+t_gdm_hym <- tidy_ttest(outlier_df_list$Hymenoptera$gdm, full_sf_100$gdm, order = "Hymenoptera", sumstat = "GDM")
+
+t_df <- bind_rows(
+  t_gde_lep,
+  t_gde_dip,
+  t_gde_hym,
+  t_gdm_lep,
+  t_gdm_dip,
+  t_gdm_hym
+  )
+
+t_df %>% knitr::kable()
+```
+
+
+These are maps where the minimum and maximum GDM/GDE are scaled to the minimum and maximum across all data sets.  
+
+```{r}
+maps_scaled_gdm <- obs_map_scaled_gdm  / outlier_maps_scaled_gdm[[1]] / outlier_maps_scaled_gdm[[2]] / outlier_maps_scaled_gdm[[3]] + plot_layout(guides = "collect", widths = c(1, 1, 1)) + plot_annotation(caption = "Colors are scaled to the min and max values across data sets")
+
+maps_scaled_gdm
+```
+
+```{r, eval=FALSE}
+ggsave(filename = here("output", "publication_figs", "per_order_gdm.pdf"),
+       plot = maps_scaled_gdm,
+       width = 36,
+       height = 58.25,
+       dpi = 300,
+       unit = "cm")
+```
+
+```{r}
+maps_scaled_gde <- obs_map_scaled_gde  / outlier_maps_scaled_gde[[1]] / outlier_maps_scaled_gde[[2]] / outlier_maps_scaled_gde[[3]] + plot_layout(guides = "collect", widths = c(1, 1, 1)) + plot_annotation(caption = "Colors are scaled to the min and max values across data sets")
+
+maps_scaled_gde
+```
+
+```{r, eval=FALSE}
+ggsave(filename = here("output", "publication_figs", "per_order_gde.pdf"),
+       plot = maps_scaled_gde,
+       width = 36,
+       height = 58.25,
+       dpi = 300,
+       unit = "cm")
+```
+
+
+These are maps with independent scales for each data set.  
+
+```{r}
+maps_independent_gdm <- obs_map_gdm / outlier_maps_gdm[[1]] / outlier_maps_gdm[[2]] / outlier_maps_gdm[[3]] + plot_annotation(tag_levels= "A", tag_suffix = ")")
+
+maps_independent_gdm
+```
+
+```{r, eval=FALSE}
+ggsave(filename = here("output", "publication_figs", "per_order_gdm_independent.pdf"),
+       plot = maps_independent_gdm,
+       width = 36,
+       height = 58.25,
+       dpi = 300,
+       unit = "cm")
+```
+
+
+```{r}
+maps_independent_gde <- obs_map_gde / outlier_maps_gde[[1]] / outlier_maps_gde[[2]] / outlier_maps_gde[[3]] + plot_annotation(tag_levels= "A", tag_suffix = ")")
+
+maps_independent_gde
+```
+
+
+```{r, eval=FALSE}
+ggsave(filename = here("output", "publication_figs", "per_order_gde_independent.pdf"),
+       plot = maps_independent_gde,
+       width = 36,
+       height = 58.25,
+       dpi = 300,
+       unit = "cm")
+```
+
+
+## Per-order sampling
+
+Map helpers    
+
+```{r map-helpers-6}
+# for mapping. 
+world_base_map <- rnaturalearth::ne_countries(scale = "small", returnclass = "sf") %>%
+  select(continent, name_long) %>% 
+  st_transform(crs = "+proj=cea +lon_0=0 +lat_ts=30 +x_0=0 +y_0=0 +datum=WGS84 +ellps=WGS84 +units=m +no_defs") %>% 
+  filter(continent != "Antarctica")
+
+# basemap for mapping. 
+world_base_coast <- rnaturalearth::ne_coastline(scale = "large", returnclass = "sf") %>% 
+  st_transform(crs = "+proj=cea +lon_0=0 +lat_ts=30 +x_0=0 +y_0=0 +datum=WGS84 +ellps=WGS84 +units=m +no_defs") %>% 
+  st_join(world_base_map) %>% 
+  filter(continent != "Antarctica")
+```
+
+
+Read in and wrangle the data  
+
+```{r}
+
+# sf data set for mapping
+full_sf_100 <- read_sf(here("output", "spreadsheets", "full_sf.geojson"),
+                   crs = crs_behr) %>% 
+  filter(num_otu >= 100)
+
+
+outlier_orders <- c("Diptera", "Lepidoptera", "Hymenoptera")
+
+pi_ordered <- raw_pi %>% 
+  group_by(order) %>% 
+  arrange(desc(pi)) %>% 
+  mutate(index = row_number()) %>% 
+  ungroup()
+
+pi_order_count <- pi_ordered %>% 
+  group_by(cell) %>% 
+  count(order) %>% 
+  mutate(prop_order = n / sum(n)) %>% 
+  ungroup()
+
+prop_diptera <- pi_order_count %>% 
+  filter(order == "Diptera") 
+
+prop_diptera_sf <- full_sf_100 %>%
+  left_join(prop_diptera, by = "cell") %>% 
+  select(prop_order)
+
+prop_lep <- pi_order_count %>% 
+  filter(order == "Lepidoptera") 
+
+prop_lep_sf <- full_sf_100 %>%
+  left_join(prop_lep, by = "cell") %>% 
+  select(prop_order)
+
+prop_hym <- pi_order_count %>% 
+  filter(order == "Hymenoptera")
+
+prop_hym_sf <- full_sf_100 %>%
+  left_join(prop_hym, by = "cell") %>% 
+  select(prop_order)
+
+```
+
+
+
+```{r}
+prop_diptera_map <- ggplot() +
+  geom_sf(data = world_base_map, fill = "lightgray", color = "lightgray") +
+  geom_sf(data = prop_diptera_sf, aes(color = prop_order, fill = prop_order)) +
+  scale_fill_viridis_c(limits = c(0, 1)) +
+  scale_color_viridis_c(limits = c(0, 1), guide = "none") +
+  labs(fill = "Proportion Diptera") +
+  theme_bw()
+
+prop_lep_map <- ggplot() +
+  geom_sf(data = world_base_map, fill = "lightgray", color = "lightgray") +
+  geom_sf(data = prop_lep_sf, aes(color = prop_order, fill = prop_order)) +
+  scale_fill_viridis_c(limits = c(0, 1)) +
+  scale_color_viridis_c(limits = c(0, 1), guide = "none") +
+  labs(fill = "Proportion Lepidoptera") +
+  theme_bw()
+
+prop_hym_map <- ggplot() +
+  geom_sf(data = world_base_map, fill = "lightgray", color = "lightgray") +
+  geom_sf(data = prop_hym_sf, aes(color = prop_order, fill = prop_order)) +
+  scale_fill_viridis_c(limits = c(0, 1)) +
+  scale_color_viridis_c(limits = c(0, 1), guide = "none") +
+  labs(fill = "Proportion Hymenoptera") +
+  theme_bw() 
+
+combo_prop_map <- prop_diptera_map / prop_lep_map / prop_hym_map + plot_annotation(tag_levels= "a", tag_suffix = ")")
+
+```
+
+```{r}
+combo_prop_map
+```
+
+
+Write to file  
+
+```{r}
+ggsave(filename = here("output", "publication_figs", "order_proportions.svg"),
+       plot = combo_prop_map,
+       width = 183,
+       height = 140,
+       dpi = 300,
+       unit = "mm")
+```
+
+## Prior-posterior overlap
+
+Visualizing and calculating the percent overlap between the prior and posterior for regression coefficients.  
+
+GDE  
+
+```{r, eval=FALSE}
+MCMCvis::MCMCtrace(model_gde$model, 
+                   params = c("B[2]", "B[3]", "B[4]"), 
+                   ISB = FALSE, 
+                   exact = TRUE,
+                   priors = rstudent_t(14000, 1000, 0, 0.1),
+                   post_zm = FALSE,
+                   wd = here("output", "publication_figs"),
+                   filename = "supp_ppo_gde_betas"
+                   )
+
+MCMCvis::MCMCtrace(model_gde$model, 
+                   params = c("B[1]"), 
+                   ISB = FALSE, 
+                   exact = TRUE,
+                   priors = rstudent_t(14000, 1000, 0, 1),
+                   post_zm = FALSE,
+                   wd = here("output", "publication_figs"),
+                   filename = "supp_ppo_gde_intercept"
+                   )
+```
+
+
+GDM  
+
+```{r, eval=FALSE}
+MCMCvis::MCMCtrace(model_gdm$model, 
+                   params = c("B[2]", "B[3]", "B[4]"), 
+                   ISB = FALSE, 
+                   exact = TRUE,
+                   priors = rstudent_t(14000, 1000, 0, 0.1),
+                   post_zm = FALSE,
+                   wd = here("output", "publication_figs"),
+                   filename = "supp_ppo_gdm_betas"
+                   )
+
+MCMCvis::MCMCtrace(model_gdm$model, 
+                   params = c("B[1]"), 
+                   ISB = FALSE, 
+                   exact = TRUE,
+                   priors = rstudent_t(14000, 1000, 0, 1),
+                   post_zm = FALSE,
+                   wd = here("output", "publication_figs"),
+                   filename = "supp_ppo_gdm_intercept"
+                   )
+```
+
+## Latitudinal trends
+
+Read in data  
+
+```{r}
+model_data <- read_csv(here("output", "spreadsheets", "model_data.csv"))
+
+df_no_glaciers <- model_data %>% 
+  filter(lat_scaled < 5)
+
+# GDE
+model_mult_reg_no_glac_gde <- read_rds(here("output", "models", "model_mult_reg_no_glac_gde.rds"))
+
+post_sample_no_glac_gde <- posterior_predict(model_mult_reg_no_glac_gde)
+
+# GDM
+lat_model_no_glac_gdm <- read_rds(here("output", "models", "lat_model_no_glac_gdm.rds"))
+
+post_sample_no_glac_gdm <- posterior_predict(lat_model_no_glac_gdm)
+```
+
+### Lat model posteriors
+
+GDE plot  
+
+```{r}
+color_scheme_set("orange")
+
+lat_gde <- ppc_intervals(y = df_no_glaciers$gde, 
+              yrep = post_sample_no_glac_gde,
+              x = df_no_glaciers$lat_scaled,
+              prob = 0.7,
+              prob_outer = 0.95) +
+  labs(x = "Latitude", y = "GDE") +
+  theme_insects()
+
+lat_gde
+```
+
+
+GDM plot  
+
+```{r}
+color_scheme_set("green")
+
+lat_gdm <- ppc_intervals(y = df_no_glaciers$gdm, 
+              yrep = post_sample_no_glac_gdm,
+              x = df_no_glaciers$lat_scaled,
+              prob = 0.7,
+              prob_outer = 0.95) +
+  labs(x = "Latitude", y = "GDM") +
+  theme_insects()
+
+lat_gdm
+```
+
+
+### Full plot
+
+GDM  
+
+```{r}
+lat_full_gdm <- model_data %>% 
+  ggplot(aes(x = lat_scaled, y = gdm)) +
+  geom_point(fill = "darkgreen", shape = 21) + 
+  geom_smooth(se = FALSE, color = "#9fdfbf") + 
+  labs(x = "Latitude", y = "GDM") +
+  theme_insects()
+
+lat_full_gdm
+```
+
+GDE  
+
+```{r}
+lat_full_gde <- model_data %>% 
+  ggplot(aes(x = lat_scaled, y = gde)) +
+  geom_point(fill = "darkorange", shape = 21) + 
+  geom_smooth(se = FALSE, color = "orange") + 
+  labs(x = "Latitude", y = "GDE") +
+  theme_insects()
+
+lat_full_gde
+```
+
+
+
+### Combo plot
+
+Combo plot  
+
+```{r}
+lat_combo <- (lat_full_gdm + lat_gdm) / (lat_full_gde + lat_gde) + plot_annotation(tag_levels = "a", tag_suffix = ")") 
+
+lat_combo
+```
+
+
+Write to file  
+
+```{r}
+ggsave(filename = here("output", "publication_figs", "latitude_scatter.svg"),
+       plot = lat_combo,
+       width = 36,
+       height = 22.5,
+       dpi = 300,
+       unit = "cm")
+```
+
+## Extreme cell resampling
+
+Read in data  
+
+```{r}
+pw_pi <- read_csv(here("output", "spreadsheets", "cell_medium_3_10_pi.csv")) 
+
+analysis_data <- read_sf(here("output", "spreadsheets", "full_sf.geojson"),
+                   crs = crs_behr) %>% 
+  filter(num_otu >= 100)
+
+pw_pi_filt <- pw_pi %>% 
+  filter(cell %in% analysis_data$cell)
+
+pi_ordered <- pw_pi_filt %>% 
+  group_by(order) %>% 
+  arrange(desc(pi)) %>% 
+  mutate(index = row_number()) %>% 
+  ungroup()
+```
+
+
+Resampling functions
+
+```{r}
+hill_resample <- function(pi_in) {
+  rs_pi <- rerun(1000, sample(pi_in, 100) %>% hill_calc()) %>% 
+    unlist()
+  return(rs_pi)
+}
+
+gdm_resample <- function(pi_in) {
+  rs_pi <- rerun(1000, sample(pi_in, 100) %>% mean() %>% sqrt()) %>% 
+    unlist()
+  return(rs_pi)
+}
+```
+
+Resampling  
+
+```{r}
+dense_cells <- pi_ordered %>% 
+  count(cell) %>% 
+  slice_max(order_by = n, n = 10) %>% 
+  pull(cell)
+
+set.seed(29388)
+gde_res_df <- pi_ordered %>% 
+  filter(cell %in% dense_cells) %>% 
+  group_by(cell) %>% 
+  summarize(gde_res = hill_resample(pi_in = pi))
+
+set.seed(87799779)
+gdm_res_df <- pi_ordered %>% 
+  filter(cell %in% dense_cells) %>% 
+  group_by(cell) %>% 
+  summarize(gdm_res = gdm_resample(pi_in = pi))
+
+```
+
+GDE  
+
+```{r}
+gr_gde <- gde_res_df %>% 
+  mutate(cell = as.factor(cell)) %>% 
+  ggplot(aes(x = gde_res, y = cell)) +
+  ggridges::geom_density_ridges(rel_min_height = 0.01, fill = "#B91657FF")
+
+# Extract the data ggplot used to prepare the figure.
+#   purrr::pluck is grabbing the "data" list from the list that
+#   ggplot_build creates, and then extracting the first element of that list.
+ingredients <- ggplot_build(gr_gde) %>% purrr::pluck("data", 1)
+
+# Pick the highest point. Could easily add quantiles or other features here.
+density_lines <- ingredients %>%
+  group_by(group) %>% filter(density == max(density)) %>% ungroup()
+
+resample_plot_gde <- gr_gde +
+  geom_segment(data = density_lines, 
+               aes(x = x, y = ymin, xend = x, 
+                   yend = ymin+density*scale*iscale)) +
+  scale_x_continuous(limits = c(min(analysis_data$gde), max(analysis_data$gde))) +
+  labs(x = "GDE", title = "1000 resamples of the top 10 most densely sample cells")
+
+```
+
+```{r}
+resample_plot_gde
+```
+
+
+```{r}
+gr_gdm <- gdm_res_df %>% 
+  mutate(cell = as.factor(cell)) %>% 
+  ggplot(aes(x = gdm_res, y = cell)) +
+  ggridges::geom_density_ridges(rel_min_height = 0.01, fill = "#366DA0FF")
+
+# Extract the data ggplot used to prepare the figure.
+#   purrr::pluck is grabbing the "data" list from the list that
+#   ggplot_build creates, and then extracting the first element of that list.
+ingredients <- ggplot_build(gr_gdm) %>% purrr::pluck("data", 1)
+
+# Pick the highest point. Could easily add quantiles or other features here.
+density_lines <- ingredients %>%
+  group_by(group) %>% filter(density == max(density)) %>% ungroup()
+
+resample_plot_gdm <- gr_gdm +
+  geom_segment(data = density_lines, 
+               aes(x = x, y = ymin, xend = x, 
+                   yend = ymin+density*scale*iscale)) +
+  scale_x_continuous(limits = c(min(analysis_data$gdm), max(analysis_data$gdm))) +
+  labs(x = "GDM", title = "1000 resamples of the top 10 most densely sample cells")
+
+```
+
+```{r}
+resample_plot_gdm
+```
+
+
+Combo plot  
+
+```{r}
+combo_resample <- resample_plot_gdm / resample_plot_gde + plot_annotation(tag_levels = "a", tag_suffix = ")")
+```
+
+```{r}
+combo_resample
+```
+
+
+```{r}
+ggsave(filename = here("output", "publication_figs", "extreme_resample.svg"),
+       plot = combo_resample,
+       width = 22.5,
+       height = 36,
+       dpi = 300,
+       unit = "cm")
+```
+
+
+## Partial dependence plots
+
+
+Partial dependence curves  
+
+```{r}
+plot_part_dep <- function(df, variable) {
+  
+   if (variable == "current_medium_bio_13") {
+     x_lab <- "WET"
+   } else if (variable == "current_medium_bio_15") {
+     x_lab <- "Precip. seasonality"
+   } else if (variable == "current_medium_bio_2") {
+     x_lab <- "Temp. seasonality"
+   } else if (variable == "current_medium_bio_5") {
+     x_lab <- "WARM"
+   } else stop("Choose a variable from the final model.")
+  
+  df_name <- deparse(substitute(df))
+  
+  if (df_name == "beta_posts_gde") {
+    y_lab <- "GDE"
+    response <- sym("gde")
+  } else if (df_name == "beta_posts_gdm") {
+    y_lab <- "GDM"
+    response <- sym("gdm")
+  } else stop("The input data frame needs to be either beta_posts_gde or beta_posts_gdm.")
+  
+  var_name <- sym(variable)
+
+  
+  
+  ggplot(data = model_data, aes(x = {{ var_name }}, y = {{ response }})) +
+    # to easily set up the plot dimensions, making scatterplot without the points
+    geom_point(color = "transparent") +
+    geom_abline(data = df, aes(intercept = intercept, slope = {{ var_name }}), alpha = 0.2, color = "darkgray") +
+    geom_abline(intercept = median(df$intercept), slope = median(df[[var_name]]), color = "darkgreen", size = 1.25) +
+    labs(x = x_lab,
+         y = y_lab) +
+    theme_insects()
+  
+}
+```
+
+GDE partial dependence plots
+
+```{r}
+pred_gde <- colnames(beta_posts_gde %>% select(-intercept, -draw))
+
+gde_pdep_plots <- map(pred_gde, ~plot_part_dep(df = beta_posts_gde, variable = .x))
+
+names(gde_pdep_plots) <- pred_gde
+
+gde_pdep_plots[["current_medium_bio_5"]] + 
+  gde_pdep_plots[["current_medium_bio_2"]] + 
+  gde_pdep_plots[["current_medium_bio_13"]] + 
+  theme(axis.title.y = element_blank())
+```
+
+
+
+GDM partial dependence plots  
+
+```{r}
+pred_gdm <- colnames(beta_posts_gdm %>% select(-intercept, -draw))
+
+gdm_pdep_plots <- map(pred_gdm, ~plot_part_dep(df = beta_posts_gdm, variable = .x))
+
+names(gdm_pdep_plots) <- pred_gdm
+
+gdm_pdep_plots[["current_medium_bio_5"]] + 
+  gdm_pdep_plots[["current_medium_bio_15"]] + theme(axis.title.y = element_blank())
+```
+
+
+
+
+## Sampling bias 
+
+Per the great suggestion by Rob Anderson (comment here for posterity):
+> I wonder what you can do to test for artifacts of sampling bias and potentially correct for it.  I see that you focused only on cells that meet thresholds of data availability.  However, those pixels still surely vary considerably in how complete the sampling was.  The question is whether or not that affects the results.  It occurs to me that you could take data from single cells that have the most data - and rareify that (randomly) to see if the GD estimates vary.  If they don't, you've documented robustness to that.  If they do (and in a predictable way), then you potentially could correct for it (even if the relationship is not linear, rather for example following some allometric scaling relationship). What do you think about all this?
+
+
+```{r, per-otu-bias}
+full_sf_100 <- read_sf(here("output", "spreadsheets", "full_sf.geojson"),
+                   crs = crs_behr) %>% 
+  filter(num_otu >= 100)
+
+raw_pi <- read_csv(here("output", "spreadsheets", "cell_medium_3_10_pi.csv")) 
+
+pi_100 <- raw_pi %>% 
+  filter(cell %in% full_sf_100$cell)
+
+cor.test(pi_100$num_ind, pi_100$pi)
+```
+
+```{r, per-cell-bias}
+total_ni_r_gde <- tidy_cor(full_sf_100$num_ind, full_sf_100$gde, var = "# Ind", sumstat = "GDE")
+
+med_ind <- pi_100 %>% group_by(cell) %>% summarize(median_num_ind = median(num_ind)) %>% 
+  left_join(full_sf_100, by = "cell")
+
+median_ni_r_gde <- tidy_cor(med_ind$median_num_ind, med_ind$gde, var = "Median # Ind", sumstat = "GDE")
+
+no_r_gde <- tidy_cor(full_sf_100$num_otu, full_sf_100$gde, var = "# OTU", sumstat = "GDE")
+
+
+total_ni_r_gdm <- tidy_cor(full_sf_100$num_ind, full_sf_100$gdm, var = "# Ind", sumstat = "GDM")
+
+median_ni_r_gdm <- tidy_cor(med_ind$median_num_ind, med_ind$gdm, var = "Median # Ind", sumstat = "GDM")
+
+no_r_gdm <- tidy_cor(full_sf_100$num_otu, full_sf_100$gdm, var = "# OTU", sumstat = "GDM")
+
+all_cor_test <- bind_rows(
+  total_ni_r_gde,
+  total_ni_r_gdm,
+  median_ni_r_gde,
+  median_ni_r_gdm,
+  no_r_gde,
+  no_r_gdm
+)
+
+all_cor_test %>% 
+  knitr::kable()
+```
+
+
+
+
+## Unused code
+Code that I'm removing because I think it's unneeded, but I'm scared to delete in case something breaks  
+
+### Freezeling
+The global freezeline raster needs to be aggregated. It takes forever, so I write it to a file to read in after the first pass.  
+
+```{r, eval = FALSE}
+frz_line_rast <- raster(here("data", "climate_poly", "min_temp_binary.tif")) %>% 
+  resample_equal_area(km = 193, is_categorical = TRUE)
+
+writeRaster(frz_line_rast, here("data", "climate_poly", "min_temp_binary_agg.tif"))
+```
+
+
+Read in if it's already been aggregated.  
+
+```{r}
+frz_line_rast <- raster(here("data", "climate_poly", "min_temp_binary_agg.tif"))
+```
+
+
+
