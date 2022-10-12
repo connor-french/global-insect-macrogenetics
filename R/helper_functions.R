@@ -432,3 +432,61 @@ tidy_cor <- function(x, y, var, sumstat) {
   return(out_tib)
 }
 
+# plot partial dependence curves
+
+plot_part_dep <- function(df, variable) {
+  
+  if (variable == "current_medium_bio_13") {
+    x_lab <- "WET"
+  } else if (variable == "current_medium_bio_15") {
+    x_lab <- "Precip. seasonality"
+  } else if (variable == "current_medium_bio_2") {
+    x_lab <- "Temp. seasonality"
+  } else if (variable == "current_medium_bio_5") {
+    x_lab <- "WARM"
+  } else stop("Choose a variable from the final model.")
+  
+  df_name <- deparse(substitute(df))
+  
+  if (df_name == "beta_posts_gde") {
+    y_lab <- "GDE"
+    response <- sym("gde")
+  } else if (df_name == "beta_posts_gdm") {
+    y_lab <- "GDM"
+    response <- sym("gdm")
+  } else stop("The input data frame needs to be either beta_posts_gde or beta_posts_gdm.")
+  
+  var_name <- sym(variable)
+  
+  
+  
+  ggplot(data = model_data, aes(x = {{ var_name }}, y = {{ response }})) +
+    # to easily set up the plot dimensions, making scatterplot without the points
+    geom_point(color = "transparent") +
+    geom_abline(data = df, aes(intercept = intercept, slope = {{ var_name }}), alpha = 0.2, color = "darkgray") +
+    geom_abline(intercept = median(df$intercept), slope = median(df[[var_name]]), color = "darkgreen", size = 1.25) +
+    labs(x = x_lab,
+         y = y_lab) +
+    theme_insects()
+  
+}
+
+
+# function to help with predictor maps
+plot_predictor <- function(variable) {
+  pred_plot <- 
+    ggplot() +
+    geom_sf(data = all_predictors, aes(fill = .data[[variable]], color = .data[[variable]])) +
+    # scale_fill_gradientn(colors = pal) +
+    # scale_color_gradientn(colors = pal, guide = NULL) + 
+    scale_fill_viridis_c() +
+    scale_color_viridis_c(guide = NULL) +
+    geom_sf(data = world_base_coast, fill = "transparent") +
+    labs(fill = variable) +
+    theme_insects() +
+    theme(legend.text = element_text(size = 10),
+          legend.title = element_text(size = 14))
+  
+  return(pred_plot)
+  
+}

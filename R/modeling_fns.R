@@ -242,12 +242,14 @@ plot_obs_vs_pred <- function(df, resp) {
     round(3)
   
   ggplot(df, aes_string(x = ".pred", y = resp)) +
-    geom_point(aes_string(color = "continent")) +
+    geom_point(fill = "darkgray", color = "black", shape = 21) +
     geom_smooth(color = "red",
                 method = "lm",
                 formula = "y ~ x") +
     geom_abline(slope = 1, intercept = 0) +
-    labs(caption = str_wrap(paste0("RMSE = ", rmse, ", R^2 = ", r_2, ", Slope = ", slope, ", Y-int = ", intercept)), width = 10) +
+    labs(caption = str_wrap(paste0("RMSE = ", rmse, ", R^2 = ", r_2, ", Slope = ", slope, ", Y-int = ", intercept)), 
+         width = 10,
+         x = "Predicted", y = "Observed") +
     theme_bw()
 }
 
@@ -331,7 +333,7 @@ map_mess <- function(mess) {
   ggplot() +
     geom_sf(data = st_geometry(world_small)) +
     geom_sf(data = mess, aes(color = mess_binary, fill = mess_binary)) +
-    scale_color_manual(values = c("#56B4E9", "#E69F00"), na.value = "transparent", aesthetics = c("color", "fill")) +
+    scale_color_manual(values = c("#56B4E9", "#E69F00"), na.value = "transparent", aesthetics = c("color", "fill"), na.translate = FALSE) +
     theme_bw()
 }
 

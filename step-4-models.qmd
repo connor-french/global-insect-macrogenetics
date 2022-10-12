@@ -48,8 +48,11 @@ library(patchwork)
 library(SpatialPack) 
 
 
-
 source(here("R", "modeling_fns.R"))
+
+# setting the crs for maps and environmental data
+# behrmann projection
+crs_behr <- "+proj=cea +lon_0=0 +lat_ts=30 +x_0=0 +y_0=0 +datum=WGS84 +ellps=WGS84 +units=m +no_defs"
 ```
 
 ```{r}
@@ -90,6 +93,9 @@ library(patchwork)
 #library(SpatialPack) 
 
 source(here("R", "modeling_fns.R"))
+# setting the crs for maps and environmental data
+# behrmann projection
+crs_behr <- "+proj=cea +lon_0=0 +lat_ts=30 +x_0=0 +y_0=0 +datum=WGS84 +ellps=WGS84 +units=m +no_defs"
 ```
 
 ## Read in and process raw data
@@ -131,10 +137,6 @@ This includes converting the data frames to `sf` objects to make spatial operati
 #| message: false
 #| warning: false
 #| code-fold: true
-
-# setting the crs for maps and environmental data
-# behrmann projection
-crs_behr <- "+proj=cea +lon_0=0 +lat_ts=30 +x_0=0 +y_0=0 +datum=WGS84 +ellps=WGS84 +units=m +no_defs"
 
 # for assigning cells to continents. Islands are missed at coarser resolutions
 world_large <- rnaturalearth::ne_countries(scale = "large", returnclass = "sf") %>%
@@ -427,6 +429,33 @@ map(glmm_moran_gdm, ~.x[["p.value"]]) %>%
   knitr::kable(caption = "Moran's I p-values (GDM)")
 ```
 
+#### Bayes R^2
+
+```{r}
+#| label: bayes-r2
+
+r2_df_gde <- tibble(
+  r2_curr_clim =  bayes_R2_glmmfields(glmm_gde$min_otu_100)[,1]
+) %>% 
+  pivot_longer(cols = everything(),
+               names_to = "model",
+               values_to = "post")
+
+r2_df_gdm <- tibble(
+  r2_curr_clim =  bayes_R2_glmmfields(glmm_gdm$min_otu_100)[,1]
+) %>% 
+  pivot_longer(cols = everything(),
+               names_to = "model",
+               values_to = "post")
+
+ggplot() +
+  geom_density(data = r2_df_gde, aes(x = post), color = col_gde) +
+  geom_density(data = r2_df_gdm, aes(x = post), color = col_gdm) +
+  labs(title = paste0("Median GDE = ", round(median(r2_df_gde$post), 3), "\n", "Median GDM = ", round(median(r2_df_gdm$post), 3)))
+```
+
+
+
 #### Posterior plots
 
 Generating a bunch of diagnostic plots to compare how the models perform on training data.
@@ -577,7 +606,7 @@ Predicting the model to withheld test data.
 
 
 test_scaled <- suppressWarnings(map2(train_sf, test_sf, ~scale_test(.x, .y)))
-
+set.seed(38888)
 test_pred_gde <- map2(glmm_gde, test_scaled, ~predict(.x, newdata = .y))
 test_pred_gdm <- map2(glmm_gdm, test_scaled, ~predict(.x, newdata = .y))
 
@@ -606,6 +635,15 @@ test_sf_gdm <-
   )
 ```
 
+
+```{r}
+#| label: write-test-sf
+#| eval: false
+
+write_rds(test_sf_gdm, here("output", "spreadsheets", "test_sf_gdm.rds"))
+write_rds(test_sf_gde, here("output", "spreadsheets", "test_sf_gde.rds"))
+```
+
 ::: panel-tabset
 #### Obs-v-pred GDE
 
@@ -617,13 +655,22 @@ test_sf_gdm <-
 
 obs_vs_pred_gde <- map(test_sf_gde, ~plot_obs_vs_pred(.x, resp = "gde"))
 
-obs_vs_pred_gde[["min_otu_10"]] + labs(title = "min_otu_10") 
-  obs_vs_pred_gde[["min_otu_25"]] + labs(title = "min_otu_25") 
-  obs_vs_pred_gde[["min_otu_50"]] + labs(title = "min_otu_50") 
-  obs_vs_pred_gde[["min_otu_100"]] + labs(title = "min_otu_100") 
-  obs_vs_pred_gde[["min_otu_150"]] + labs(title = "min_otu_150") 
-  obs_vs_pred_gde[["min_otu_200"]] + labs(title = "min_otu_200") 
+obs_vs_pred_gde[["min_otu_10"]] + labs(title = "Min. OTU = 10") 
+  obs_vs_pred_gde[["min_otu_25"]] + labs(title = "Min. OTU = 25") 
+  obs_vs_pred_gde[["min_otu_50"]] + labs(title = "Min. OTU = 50") 
+  obs_vs_pred_gde[["min_otu_100"]] + labs(title = "Min. OTU = 100") 
+  obs_vs_pred_gde[["min_otu_150"]] + labs(title = "Min. OTU = 150") 
+  obs_vs_pred_gde[["min_otu_200"]] + labs(title = "Min. OTU = 200") 
 ```
+
+```{r}
+#| label: write-obs-pred-gde
+#| eval: false
+
+write_rds(obs_vs_pred_gde, here("output", "exploratory_plots", "obs_vs_pred_gde.rds"))
+```
+
+
 
 #### Obs-v-pred GDM
 
@@ -635,13 +682,21 @@ obs_vs_pred_gde[["min_otu_10"]] + labs(title = "min_otu_10")
 
 obs_vs_pred_gdm <- map(test_sf_gdm, ~plot_obs_vs_pred(.x, resp = "gdm"))
 
-obs_vs_pred_gdm[["min_otu_10"]] + labs(title = "min_otu_10") 
-  obs_vs_pred_gdm[["min_otu_25"]] + labs(title = "min_otu_25") 
-  obs_vs_pred_gdm[["min_otu_50"]] + labs(title = "min_otu_50") 
-  obs_vs_pred_gdm[["min_otu_100"]] + labs(title = "min_otu_100") 
-  obs_vs_pred_gdm[["min_otu_150"]] + labs(title = "min_otu_150") 
-  obs_vs_pred_gdm[["min_otu_200"]] + labs(title = "min_otu_200") 
+obs_vs_pred_gdm[["min_otu_10"]] + labs(title = "Min. OTU = 10") 
+  obs_vs_pred_gdm[["min_otu_25"]] + labs(title = "Min. OTU = 25") 
+  obs_vs_pred_gdm[["min_otu_50"]] + labs(title = "Min. OTU = 50") 
+  obs_vs_pred_gdm[["min_otu_100"]] + labs(title = "Min. OTU = 100") 
+  obs_vs_pred_gdm[["min_otu_150"]] + labs(title = "Min. OTU = 150") 
+  obs_vs_pred_gdm[["min_otu_200"]] + labs(title = "Min. OTU = 200") 
 ```
+
+```{r}
+#| label: write-obs-pred-gdm
+#| eval: false
+
+write_rds(obs_vs_pred_gdm, here("output", "exploratory_plots", "obs_vs_pred_gdm.rds"))
+```
+
 :::
 
 #### Test maps
@@ -1048,7 +1103,7 @@ full_ci_maps_gdm[["min_otu_200"]] + labs(title = "GDM, min_otu_200")
 
 ## Latitude
 
-I opted for a simple assessment of latitude \~ GD, by doing a pearson correlation that accounts for spatial autocorrelation
+I opted for a simple assessment of latitude \~ GD, by doing a pearson correlation that accounts for spatial autocorrelation. I tested for a linear and quadratic relationship, as there appears to be a mid-latitude hump in GD. 
 
 ```{r}
 #| label: lat-cor
@@ -1058,7 +1113,11 @@ coords_full <- map(splits_sf, ~st_coordinates(st_centroid(.x)))
 
 sp_lat_gde <- map2(splits_sf, coords_full, ~modified.ttest(x = abs(.y[,2]), y = .x$gde, coords = .y))
 
-sp_lat_gdm <- map2(splits_sf, coords_full, ~modified.ttest(x = abs(.y[,2]), y = .x$gdm, coords = .y))
+sp_lat_gdm <- map2(splits_sf, coords_full, ~modified.ttest(x = abs(.y[,2]^2), y = .x$gdm, coords = .y))
+
+sp_lat_quad_gde <- map2(splits_sf, coords_full, ~modified.ttest(x = abs(.y[,2]^2), y = .x$gde, coords = .y))
+
+sp_lat_quad_gdm <- map2(splits_sf, coords_full, ~modified.ttest(x = abs(.y[,2]), y = .x$gdm, coords = .y))
 
 map(sp_lat_gde, ~.x[["p.value"]]) %>% 
   bind_rows() %>% 
@@ -1075,6 +1134,22 @@ map(sp_lat_gdm, ~.x[["p.value"]]) %>%
 map(sp_lat_gdm, ~.x[["corr"]]) %>% 
   bind_rows() %>% 
   knitr::kable(caption = "Latitude correlation coefficients (GDM)")
+
+map(sp_lat_quad_gde, ~.x[["p.value"]]) %>% 
+  bind_rows() %>% 
+  knitr::kable(caption = "Latitude p-values (GDE quad)")
+
+map(sp_lat_quad_gde, ~.x[["corr"]]) %>% 
+  bind_rows() %>% 
+  knitr::kable(caption = "Latitude correlation coefficients (GDE quad)")
+
+map(sp_lat_quad_gdm, ~.x[["p.value"]]) %>% 
+  bind_rows() %>% 
+  knitr::kable(caption = "Latitude p-values (GDM quad)")
+
+map(sp_lat_quad_gdm, ~.x[["corr"]]) %>% 
+  bind_rows() %>% 
+  knitr::kable(caption = "Latitude correlation coefficients (GDM quad)")
 ```
 
 ```{r}
