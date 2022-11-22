@@ -37,18 +37,18 @@ hill_calc <- function(dists, order = 1, correct = TRUE) {
 ###### Normalize predictors ########
 
 normalize_vars <- function(df_in) {
-  df_tib <- as_tibble(df_in) %>% 
+  df_tib <- as_tibble(df_in) |> 
     select(-geometry)
   
-  df_sf <- df_in %>% 
+  df_sf <- df_in |> 
     select(cell)
   
-  norm_rec <- recipe(hill_1 ~ ., data = df_tib) %>%
+  norm_rec <- recipe(hill_1 ~ ., data = df_tib) |>
     step_normalize(all_numeric(), -cell, -num_otu, -num_ind, -num_order, -contains("_pi"), -contains("hill_"))
   
-  df_trans <- norm_rec %>%
-    prep(training = df_tib) %>%
-    juice(all_predictors()) %>%
+  df_trans <- norm_rec |>
+    prep(training = df_tib) |>
+    juice(all_predictors()) |>
     mutate(hill_1 = df_tib$hill_1)
   
   df_trans_sf <- left_join(df_sf, df_trans, by = "cell")
@@ -56,23 +56,23 @@ normalize_vars <- function(df_in) {
 
 ##### Join predictors with their respective predictors ######
 join_predictors <- function(gen_sumstats, pred_rasts, resolution){
-  exp_df <- pred_rasts[gen_sumstats$cell] %>% 
-    as_tibble() %>% 
+  exp_df <- pred_rasts[gen_sumstats$cell] |> 
+    as_tibble() |> 
     mutate(cell = gen_sumstats$cell)
   
   if (resolution == "high") {
-    full_df <- left_join(gen_sumstats, exp_df, by = "cell") %>% 
+    full_df <- left_join(gen_sumstats, exp_df, by = "cell") |> 
       mutate(soil_high_hwsd = as.factor(soil_high_hwsd),
-             resolution = "high") %>% 
+             resolution = "high") |> 
       arrange(cell)
   } else if (resolution == "medium") {
-    full_df <- left_join(gen_sumstats, exp_df, by = "cell") %>% 
+    full_df <- left_join(gen_sumstats, exp_df, by = "cell") |> 
       mutate(soil_medium_hwsd = as.factor(soil_medium_hwsd),
-             resolution = "medium") %>% 
+             resolution = "medium") |> 
       arrange(cell) 
   } else {
-    full_df <- left_join(gen_sumstats, exp_df, by = "cell") %>% 
-      mutate(resolution = "low") %>% 
+    full_df <- left_join(gen_sumstats, exp_df, by = "cell") |> 
+      mutate(resolution = "low") |> 
       arrange(cell) 
   }
   
@@ -83,8 +83,8 @@ join_predictors <- function(gen_sumstats, pred_rasts, resolution){
 ###### Filter dfs, removing plant phylo and missing data #####
 filter_dfs <- function(df, resolution) {
   plant_res <- paste0("plant_", resolution, "_plant_phylo")
-  df_filtered <- df %>% 
-    select(-c(plant_res)) %>% 
+  df_filtered <- df |> 
+    select(-c(plant_res)) |> 
     remove_missing()
   return(df_filtered)
 }
@@ -96,7 +96,7 @@ filter_dfs <- function(df, resolution) {
 sample_response_posterior <- function(model, num_iterations = 1000, response = "gde") {
   
   # sample from the posterior distribution
-  post_draws <- posterior_predict(model, iter = num_iterations) %>% 
+  post_draws <- posterior_predict(model, iter = num_iterations) |> 
     t() 
   colnames(post_draws) <- paste0("draw_", 1:num_iterations)
   
@@ -111,29 +111,29 @@ sample_response_posterior <- function(model, num_iterations = 1000, response = "
   
   # create a data frame of posterior draws and add in the observed values for comparison.
   # in addition, I'm adding in the latitude and longitude 
-  post_df <- post_draws %>% 
-    as_tibble() %>% 
+  post_df <- post_draws |> 
+    as_tibble() |> 
     mutate(observed = resp,
            longitude = model$data$lon_scaled * 1e6,
            latitude = model$data$lat_scaled * 1e6,
-           id = 1:nrow(post_draws)) %>% 
+           id = 1:nrow(post_draws)) |> 
     pivot_longer(cols = c(contains("_"), observed),
                  names_to = "draw",
-                 values_to = "response_post") %>% 
+                 values_to = "response_post") |> 
     mutate(post_samples = if_else(draw == "observed", "observed", "posterior"))
   
   return(post_df)
 }
 
-##### tidy_post ##########
 
 # function to retrieve the parameter posteriors and log probability posterior. This will also convert each class of posterior to a data frame with reasonable column names
 tidy_post <- function(model) {
-  post_dfs <- rstan::extract(model$model, permute = TRUE) %>% 
-    map(as_tibble)
+  
+  post_dfs <- rstan::extract(model$model, permute = TRUE) |> 
+    purrr::map(~as_tibble(.x, .name_repair = "unique"))
   
   # rename beta columns to their variable names
-  colnames(post_dfs$B) <- colnames(model$X) %>% 
+  colnames(post_dfs$B) <- colnames(model$X) |> 
     janitor::make_clean_names(case = "snake")
   
   # rename spatial effect columns
@@ -201,13 +201,15 @@ bayes_R2_glmmfields <- function(fit) {
 # Function to filter data sets for number of orders
 
 order_filter <- function(order_name, analysis_data, min_n = 5) {
-  raw_pi %>% 
-    filter(order == order_name) %>% 
-    group_by(cell) %>% 
+  raw_pi |> 
+    filter(order == order_name) |> 
+    group_by(cell) |> 
     filter(n() >= 5, 
-           cell %in% analysis_data$cell) %>% 
+           cell %in% analysis_data$cell) |> 
     summarize(gdm = sqrt(mean(pi)),
-              gde = hill_calc(pi))
+              gde = hill_calc(pi),
+              num_otus = length(bin_uri),
+              num_inds = sum(num_ind))
 }
 
 
@@ -248,7 +250,7 @@ run_glmmfields <- function(response,
     seed = seed
   )
  
- hypo_file <- hypothesis %>% 
+ hypo_file <- hypothesis |> 
    paste0("-", response, "-", min_otu, ".rds")
  if (save_file) {
    write_rds(model, here("output", "models", hypo_file))
@@ -263,9 +265,9 @@ run_glmmfields <- function(response,
 # function to plot ELPD results for LOO model selection
 
 plot_loo <- function(loo_output, sumstat, min_otu) {
-  loo_output %>% 
-    as_tibble(rownames = "hypothesis") %>% 
-    mutate(hypothesis = fct_reorder(hypothesis, elpd_diff, .desc = TRUE)) %>% 
+  loo_output |> 
+    as_tibble(rownames = "hypothesis") |> 
+    mutate(hypothesis = fct_reorder(hypothesis, elpd_diff, .desc = TRUE)) |> 
     ggplot() +
     geom_hline(yintercept = 0, color = "red") +
     geom_point(aes(x = hypothesis, y = elpd_diff)) +
@@ -278,8 +280,110 @@ plot_loo <- function(loo_output, sumstat, min_otu) {
     theme(axis.text.x = element_text(angle = 20))
 }
 
+# function to map predictions
+map_pred <- function(df,
+                     resp = "GDM",
+                     freezeline = FALSE
+) {
+  if (resp == "GDM") {
+    vir_col <- "mako"
+    ss <- sym("gdm")
+  } else if (resp == "GDE") {
+    vir_col <- "rocket"
+    ss <- sym("gde")
+  } else if (resp == "combo") {
+    vir_col <- color_vec
+  } else {stop("Choose GDM, GDE, or combo as your response")}
+  
+  df <- mutate(df, lat = st_coordinates(st_centroid(st_transform(df, crs = 4326)))[,"Y"])
+  
+  if (resp == "combo") {
+    
+    plot_inset <- ggplotGrob(ggplot(data = df, aes(x = mask_.pred.x, 
+                                                   y = mask_.pred.y)) +
+                               geom_point(color = vir_col, alpha = 0.7) +
+                               geom_smooth(method = "lm", se = FALSE, color = "black") +
+                               theme_insects() +
+                               labs(x = "GDE", y = "GDM") +
+                               theme(axis.title = element_text(size = 12),
+                                     axis.text = element_text(size = 8)))
+    
+    map_plot <- ggplot() +
+      geom_sf(data = world_base_map, fill = "lightgray", color = "lightgray") +
+      geom_sf(data = df, fill = vir_col, color = vir_col) +
+      geom_sf(data = world_base_coast, fill = "transparent") +
+      coord_sf(expand = FALSE) +
+      theme_insects() +
+      theme(panel.grid = element_blank(),
+            title = element_text(size = 25)) +
+      annotation_custom(grob = plot_inset, 
+                        xmin = -17000000, 
+                        xmax = -9000000,
+                        ymin = -6000000, 
+                        ymax = 0)
+  } else {
+    
+    map_plot <- ggplot() +
+      geom_sf(data = df, aes(fill = mask_.pred, color = mask_.pred)) +
+      scale_fill_viridis_c(option = vir_col, 
+                           direction = 1) +
+      scale_color_viridis_c(option = vir_col,
+                            direction = 1,
+                            guide = NULL) +
+      geom_sf(data = df, 
+              color = df$mess_binary_cols,
+              fill = df$mess_binary_cols) +
+      geom_sf(data = world_base_coast, fill = "transparent") +
+      {if(freezeline) geom_sf(data = fl, color = "yellow", size = 0.6, alpha = 0.8)} +
+      coord_sf(expand = FALSE) +
+      labs(fill = resp) +
+      theme_insects() +
+      theme(panel.grid = element_blank(),
+            legend.position = c(0.2, 0.3),
+            legend.background = element_rect(fill = "transparent"),
+            title = element_text(size = 25))
+    
+  }
+  
+  
+  return(map_plot)
+}
+
+
+# function for mapping the residuals
+
+map_resids <- function(df, sumstat = "gdm", n_otu = 100) {
+  
+  title_lab <- str_to_upper(sumstat)
+  
+  df <- filter(df, num_otu >= n_otu)
+  
+  # to set the center color at zero
+  limit <- max(abs(df$.resid)) * c(-1, 1)
+  
+  ggplot() +
+    geom_sf(data = world_base_map,
+            fill = "lightgray",
+            color = "lightgray") +
+    geom_sf(data = df, aes(fill = .resid, color = .resid)) +
+    {if (sumstat == "gdm") scale_fill_distiller(type = "div", palette = 5, limit = limit)} +
+    {if (sumstat == "gdm") scale_color_distiller(type = "div", palette = 5, limit = limit)} +
+    {if (sumstat == "gde") scale_fill_distiller(type = "div", palette = 1, limit = limit)} +
+    {if (sumstat == "gde") scale_color_distiller(type = "div", palette = 1, limit = limit)} +
+    coord_sf(expand = FALSE) +
+    guides(color = "none") +
+    labs(fill = paste0(title_lab, " Residual"))  +
+    theme_insects() +
+    theme(
+      panel.grid = element_blank(),
+      legend.position = c(0.15, 0.3)
+    )
+}
+
+
+
 # function for order maps
-map_order <- function(df, order_name, sumstat = "gdm", scale_guide = TRUE) {
+map_order <- function(df, order_name, sumstat = "gdm", inset_plot = "density", trend = TRUE, scale_guide = TRUE, legend_in = FALSE) {
   
   if (sumstat == "gdm") {
     # plot a red line for the median of the observed data
@@ -317,18 +421,31 @@ map_order <- function(df, order_name, sumstat = "gdm", scale_guide = TRUE) {
   
   
   # inset GDM histograms
-  dens_inset <- ggplotGrob(ggplot(data = df, aes(x = !!ss)) +
-                             geom_density(color = "black", fill = "gray") +
-                             geom_density(data = full_sf_100, aes(x = !!ss), color = "black", fill = "transparent", linetype = "dashed") +
-                             #geom_vline(xintercept = obs_median, color = "red") +
-                             theme_insects() +
-                             labs(x = str_to_upper(sumstat)) +
-                             scale_x_continuous(limits = lims, labels = label_number(accuracy = 0.01)) +
-                             theme(axis.title = element_text(size = 12),
-                                   axis.text = element_text(size = 8),
-                                   axis.text.y = element_blank(),
-                                   axis.ticks.y = element_blank(),
-                                   axis.title.y = element_blank()))
+  if (inset_plot == "density") {
+    plot_inset <- ggplotGrob(ggplot(data = df, aes(x = !!ss)) +
+                               geom_density(color = "black", fill = "gray") +
+                               geom_density(data = full_sf_100, aes(x = !!ss), color = "black", fill = "transparent", linetype = "dashed") +
+                               #geom_vline(xintercept = obs_median, color = "red") +
+                               theme_insects() +
+                               labs(x = str_to_upper(sumstat)) +
+                               scale_x_continuous(limits = lims, labels = label_number(accuracy = 0.01)) +
+                               theme(axis.title = element_text(size = 12),
+                                     axis.text = element_text(size = 8),
+                                     axis.text.y = element_blank(),
+                                     axis.ticks.y = element_blank(),
+                                     axis.title.y = element_blank()))
+    
+  } else if (inset_plot == "scatter") {
+    df <- mutate(df, lat = st_coordinates(st_centroid(st_transform(df, crs = 4326)))[,"Y"])
+    plot_inset <- ggplotGrob(ggplot(data = df, aes(x = abs(lat), y = !!ss)) +
+                               geom_point(color = "black", alpha = 0.7) +
+                               {if(trend)geom_smooth(method = "lm", formula = y ~ x + I(x^2), color = col_gde, se = FALSE, size = 2)} +
+                               theme_insects() +
+                               labs(x = "Latitude", y = str_to_upper(sumstat)) +
+                               scale_x_continuous( labels = label_number(suffix = "°")) +
+                               theme(axis.title = element_text(size = 12),
+                                     axis.text = element_text(size = 8)))
+  }
   
   if (scale_guide == TRUE) {
     ggplot() +
@@ -342,39 +459,61 @@ map_order <- function(df, order_name, sumstat = "gdm", scale_guide = TRUE) {
                             direction = 1,
                             limits = lims,
                             guide = "none") +
-      labs(title = str_c(order_name, ", N=", nrow(df), 
-                         " cells. N=", n_otus, " OTUs."),
+      coord_sf(expand = FALSE) +
+      labs(title = paste0(order_name, ", *N*=", nrow(df), 
+                         " cells. *N*=", n_otus, " OTUs."),
            fill = str_to_upper(sumstat))  +
       theme_insects() +
-      theme(panel.grid = element_blank(),
-            plot.title = element_text(hjust = 0.5,
-                                      size = 25)) +
-      annotation_custom(grob = dens_inset, 
-                        xmin = -19000000, 
-                        xmax = -10000000,
-                        ymin = -7000000, 
+      {
+        if (legend_in)
+          theme(
+            panel.grid = element_blank(),
+            plot.title = element_text(size = 25),
+            legend.position = c(0.7, 0.3),
+            legend.background = element_rect(fill = "transparent")
+          )
+        else
+          theme(panel.grid = element_blank(),
+                plot.title = ggtext::element_markdown(size = 25))
+      } +
+      annotation_custom(grob = plot_inset, 
+                        xmin = -17000000, 
+                        xmax = -9000000,
+                        ymin = -6000000, 
                         ymax = 0)
   }
   else {
     ggplot() +
       geom_sf(data = world_base_map, fill = "lightgray", color = "lightgray") +
       geom_sf(data = df, aes(fill = !!ss, color = !!ss)) +
-      scale_fill_viridis_c(option = fill_color, 
+      scale_fill_viridis_c(option = fill_color,
                            direction = 1) +
-      scale_color_viridis_c(option = fill_color, 
+      scale_color_viridis_c(option = fill_color,
                             direction = 1,
                             guide = "none") +
-      labs(title = str_c(order_name, ", N=", nrow(df), " cells. N=", n_otus, " OTUs."),
-           fill = str_to_upper(sumstat))  +
+      coord_sf(expand = FALSE) +
+      labs(
+        title = paste0(order_name, ", *N*=", nrow(df), " cells. *N*=", n_otus, " OTUs."),
+        fill = str_to_upper(sumstat)
+      )  +
       theme_insects() +
-      theme(panel.grid = element_blank(),
-            plot.title = element_text(hjust = 0.5, 
-                                      size = 25)) +
-      annotation_custom(grob = dens_inset, 
-                        xmin = -19000000, 
-                        xmax = -10000000,
-                        ymin = -7000000, 
-                        ymax = 0)
+      {
+        if (legend_in)
+          theme(
+            panel.grid = element_blank(),
+            plot.title = ggtext::element_markdown(size = 25),
+            legend.position = c(0.7, 0.3)
+          )
+        else
+          theme(panel.grid = element_blank(),
+                plot.title = ggtext::element_markdown(size = 25))
+      } +
+      annotation_custom(
+        grob = plot_inset,
+        xmin = -17000000, 
+        xmax = -9000000,
+        ymin = -6000000, 
+        ymax = 0)
   }
   
 }
@@ -482,6 +621,7 @@ plot_predictor <- function(variable) {
     scale_fill_viridis_c() +
     scale_color_viridis_c(guide = NULL) +
     geom_sf(data = world_base_coast, fill = "transparent") +
+    coord_sf(expand = FALSE) +
     labs(fill = variable) +
     theme_insects() +
     theme(legend.text = element_text(size = 10),
@@ -490,3 +630,117 @@ plot_predictor <- function(variable) {
   return(pred_plot)
   
 }
+
+
+# plot observed maps
+plot_obs <- function(df, resp = "GDM", title = "", trend = FALSE, freezeline = FALSE, legend_in = FALSE) {
+  if (resp == "GDM") {
+    vir_col <- "mako"
+    line_col <- "#366DA0FF"
+    ss <- sym("gdm")
+  } else if (resp == "GDE") {
+    vir_col <- "rocket"
+    line_col <- "#B91657FF"
+    ss <- sym("gde")
+  } else if (resp == "combo") {
+    vir_col <- color_vec_obs
+  } else {stop("Choose GDM or GDE as your response")}
+  
+  df <- mutate(df, lat = st_coordinates(st_centroid(st_transform(df, crs = 4326)))[,"Y"])
+  
+  if (resp == "combo") {
+    
+    plot_inset <- ggplotGrob(ggplot(data = df, aes(x = gde, y = gdm)) +
+                               geom_point(color = vir_col, alpha = 0.7) +
+                               geom_smooth(method = "lm", se = FALSE, color = "black") +
+                               theme_insects() +
+                               labs(x = "GDE", y = "GDM") +
+                               theme(axis.title = element_text(size = 12),
+                                     axis.text = element_text(size = 8)))
+    
+    map_plot <- ggplot() +
+      geom_sf(data = world_base_map, fill = "lightgray", color = "lightgray") +
+      geom_sf(data = df, fill = vir_col, color = vir_col) +
+      coord_sf(expand = FALSE) +
+      theme_insects() +
+      theme(panel.grid = element_blank(),
+            title = element_text(size = 25)) +
+      annotation_custom(grob = plot_inset, 
+                        xmin = -17000000, 
+                        xmax = -9000000,
+                        ymin = -6000000, 
+                        ymax = 0)
+  } else {
+    plot_inset <- ggplotGrob(ggplot(data = df, aes(x = abs(lat), y = !!ss)) +
+                               geom_point(color = "black", alpha = 0.7) +
+                               {if(trend)geom_smooth(method = "lm", formula = y ~ x + I(x^2), color = line_col, se = FALSE, size = 2)} +
+                               theme_insects() +
+                               labs(x = "Latitude", y = resp) +
+                               scale_x_continuous( labels = label_number(suffix = "°")) +
+                               theme(axis.title = element_text(size = 12),
+                                     axis.text = element_text(size = 8)))
+    
+    map_plot <- ggplot() +
+      geom_sf(data = world_base_map, fill = "lightgray", color = "lightgray") +
+      geom_sf(data = df, aes(fill = !!ss, color = !!ss)) +
+      scale_fill_viridis_c(option = vir_col, 
+                           direction = 1) +
+      scale_color_viridis_c(option = vir_col,
+                            direction = 1,
+                            guide = NULL) +
+      {if(freezeline) geom_sf(data = fl, color = "yellow", size = 0.6, alpha = 0.8)} +
+      coord_sf(expand = FALSE) +
+      labs(fill = resp, title = title) +
+      theme_insects() +
+      
+      {
+        if (legend_in)
+          theme(
+            panel.grid = element_blank(),
+            title = element_text(size = 25),
+            legend.position = c(0.7, 0.3),
+            legend.background = element_rect(fill = "transparent")
+          )
+        else
+          theme(panel.grid = element_blank(),
+                legend.position = c(0.2, 0.3), 
+                title = element_text(size = 25))
+      } +
+      annotation_custom(grob = plot_inset, 
+                        xmin = -17000000, 
+                        xmax = -9000000,
+                        ymin = -6000000, 
+                        ymax = 0)
+    
+  }
+  
+  
+ return(map_plot)
+}
+
+full_sf_100 <- read_sf(here("output", "spreadsheets", "full_sf.geojson"),
+                       crs = crs_behr) |> 
+  filter(num_otu >= 100)
+
+# plot sampling bias
+plot_samp <- function(x, resp = "gdm", pred = "num_ind") {
+  
+  x_lab <- ifelse(pred == "num_ind", "Number of individuals", "Number of OTUs")
+  
+  ggplot(data = x, aes_string(x = pred, y = resp)) +
+    geom_point(size = 2) +
+    scale_x_log10() +
+    labs(y = str_to_upper(resp),
+         x = x_lab) +
+    theme_insects()
+}
+
+# for plotting themes
+theme_insects <- function() {
+  theme_bw() %+replace%
+    theme(axis.text = element_text(size = 14),
+          axis.title = element_text(size = 20),
+          legend.text = element_text(size = 14),
+          legend.title = element_text(size = 20))
+}
+

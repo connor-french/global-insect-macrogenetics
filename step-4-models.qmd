@@ -112,7 +112,7 @@ crs_behr <- "+proj=cea +lon_0=0 +lat_ts=30 +x_0=0 +y_0=0 +datum=WGS84 +ellps=WGS
 raw_pi <- read_csv(here("output", "spreadsheets", "cell_medium_3_10_pi.csv"))
 
 # only keeping relevant columns
-raw_df <- read_csv(here("output", "spreadsheets", "cell_medium_3_10_sumstats.csv")) %>% 
+raw_df <- read_csv(here("output", "spreadsheets", "cell_medium_3_10_sumstats.csv")) |> 
   select(cell, gdm = sqrt_pi, gde = hill_1, num_ind, num_otu, num_order)
 ```
 
@@ -139,13 +139,13 @@ This includes converting the data frames to `sf` objects to make spatial operati
 #| code-fold: true
 
 # for assigning cells to continents. Islands are missed at coarser resolutions
-world_large <- rnaturalearth::ne_countries(scale = "large", returnclass = "sf") %>%
-  select(continent, name_long) %>% 
+world_large <- rnaturalearth::ne_countries(scale = "large", returnclass = "sf") |>
+  select(continent, name_long) |> 
   st_transform(crs = crs_behr) 
 
 # for mapping. this will be smaller so plotting is faster
-world_small <- rnaturalearth::ne_countries(scale = "small", returnclass = "sf") %>%
-  select(continent, name_long) %>% 
+world_small <- rnaturalearth::ne_countries(scale = "small", returnclass = "sf") |>
+  select(continent, name_long) |> 
   st_transform(crs = crs_behr) 
 
 # all predictors
@@ -175,23 +175,23 @@ rasters_full <- raster::stack(rast_list_pred)
 crs(rasters_full) <- crs_behr
 
 # convert to data frame 
-predictors_sf <- rasters_full %>%
-  rasterToPolygons() %>%
+predictors_sf <- rasters_full |>
+  rasterToPolygons() |>
   st_as_sf() 
 
-predictors_sf <- predictors_sf %>% 
-  mutate(cell = cellFromXY(rasters_full, st_coordinates(st_centroid(predictors_sf)))) %>% 
-  rename_with(~str_remove_all(.x, "current_medium_"), contains("current_medium")) %>% rename_with(~str_remove_all(.x, "medium_"), contains("_medium_"))
+predictors_sf <- predictors_sf |> 
+  mutate(cell = cellFromXY(rasters_full, st_coordinates(st_centroid(predictors_sf)))) |> 
+  rename_with(~str_remove_all(.x, "current_medium_"), contains("current_medium")) |> rename_with(~str_remove_all(.x, "medium_"), contains("_medium_"))
 
 # read in stability 
-stability_sf <- read_sf(here("data", "climate_poly", "new_stability.geojson"), crs = crs_behr) %>% 
+stability_sf <- read_sf(here("data", "climate_poly", "new_stability.geojson"), crs = crs_behr) |> 
   rename(precip_trend = GlobalExtreme_prTrendExt,
          precip_var = GlobalExtreme_prVarExt,
          temp_trend = GlobalExtreme_tsTrendExt,
          temp_var = GlobalExtreme_tsVarExt)
 
 # for freezeline delineation
-div_sf <- st_read(here("data", "climate_poly", "min_temp_binary.geojson")) %>% 
+div_sf <- st_read(here("data", "climate_poly", "min_temp_binary.geojson")) |> 
   st_transform(crs = crs_behr)
 
 # hack to validate the multipolygon
@@ -204,10 +204,10 @@ div_sf_buf <- st_buffer(div_sf, dist = 0)
 #| eval: false
 
 # add predictors and continents 
-full_sf <- left_join(predictors_sf, filter_df, by = "cell") %>% 
-  st_join(stability_sf, left = TRUE, largest = TRUE) %>% 
-  st_join(world_large, largest = TRUE) %>% 
-  st_join(div_sf_buf, largest = TRUE) %>% 
+full_sf <- left_join(predictors_sf, filter_df, by = "cell") |> 
+  st_join(stability_sf, left = TRUE, largest = TRUE) |> 
+  st_join(world_large, largest = TRUE) |> 
+  st_join(div_sf_buf, largest = TRUE) |> 
   mutate(freezeline = if_else(min_temp == "temperate", 1L, 0L))
   
 ggplot() +
@@ -412,7 +412,7 @@ glmm_pred_sf_gde <- map2(train_sf, glmm_pred_gde, ~mutate(.x, .pred = pull(.y, 1
 glmm_pred_sf_gdm <- map2(train_sf, glmm_pred_gdm, ~mutate(.x, .pred = pull(.y, 1), .resid = gdm - .pred))
 
 # create a neighborhood matrix (queen = TRUE means all neighbors, including diagonals, will be included) and spatial weights matrix
-glmm_w <- map(train_sf, ~poly2nb(.x, queen = TRUE)) %>% 
+glmm_w <- map(train_sf, ~poly2nb(.x, queen = TRUE)) |> 
   map(~nb2listw(.x, style = "W", zero.policy = TRUE))
 
 
@@ -420,12 +420,12 @@ glmm_moran_gde <- map2(glmm_pred_sf_gde, glmm_w, ~moran.mc(.x$.resid, .y, nsim =
 glmm_moran_gdm <- map2(glmm_pred_sf_gdm, glmm_w, ~moran.mc(.x$.resid, .y, nsim = 10000, zero.policy = TRUE))
 
 # check moran p-values
-map(glmm_moran_gde, ~.x[["p.value"]]) %>% 
-  bind_rows() %>% 
+map(glmm_moran_gde, ~.x[["p.value"]]) |> 
+  bind_rows() |> 
   knitr::kable(caption = "Moran's I p-values (GDE)")
 
-map(glmm_moran_gdm, ~.x[["p.value"]]) %>% 
-  bind_rows() %>% 
+map(glmm_moran_gdm, ~.x[["p.value"]]) |> 
+  bind_rows() |> 
   knitr::kable(caption = "Moran's I p-values (GDM)")
 ```
 
@@ -436,14 +436,14 @@ map(glmm_moran_gdm, ~.x[["p.value"]]) %>%
 
 r2_df_gde <- tibble(
   r2_curr_clim =  bayes_R2_glmmfields(glmm_gde$min_otu_100)[,1]
-) %>% 
+) |> 
   pivot_longer(cols = everything(),
                names_to = "model",
                values_to = "post")
 
 r2_df_gdm <- tibble(
   r2_curr_clim =  bayes_R2_glmmfields(glmm_gdm$min_otu_100)[,1]
-) %>% 
+) |> 
   pivot_longer(cols = everything(),
                names_to = "model",
                values_to = "post")
@@ -643,6 +643,18 @@ test_sf_gdm <-
 write_rds(test_sf_gdm, here("output", "spreadsheets", "test_sf_gdm.rds"))
 write_rds(test_sf_gde, here("output", "spreadsheets", "test_sf_gde.rds"))
 ```
+
+```{r}
+#| echo: false
+#| label: read-test-sf
+
+test_sf_gdm <- read_rds(here("output", "spreadsheets", "test_sf_gdm.rds")) |> 
+  map(~st_set_crs(.x, crs_behr))
+
+test_sf_gde <- read_rds(here("output", "spreadsheets", "test_sf_gde.rds")) |> 
+  map(~st_set_crs(.x, crs_behr))
+```
+
 
 ::: panel-tabset
 #### Obs-v-pred GDE
@@ -920,7 +932,7 @@ full_sf_noNA <- filter(full_sf, complete.cases(across(any_of(pred_vars))))
 
 
 full_preds_sf_gde <-
-  map(full_preds_gde, ~ bind_cols(full_sf_noNA, .x)) %>%
+  map(full_preds_gde, ~ bind_cols(full_sf_noNA, .x)) |>
   map( ~ mutate(
     .x,
     .pred = estimate,
@@ -931,7 +943,7 @@ full_preds_sf_gde <-
   ))
 
 full_preds_sf_gdm <-
-  map(full_preds_gdm, ~ bind_cols(full_sf_noNA, .x)) %>%
+  map(full_preds_gdm, ~ bind_cols(full_sf_noNA, .x)) |>
   map( ~ mutate(
     .x,
     .pred = estimate,
@@ -959,9 +971,9 @@ write_rds(full_preds_sf_gdm, here("output", "spreadsheets", "full_preds_sf_gdm.r
 #| label: full-preds-hide
 #| echo: false
 
-full_preds_sf_gde <- read_rds(here("output", "spreadsheets", "full_preds_sf_gde.rds")) %>% 
+full_preds_sf_gde <- read_rds(here("output", "spreadsheets", "full_preds_sf_gde.rds")) |> 
   map(~st_set_crs(.x, crs_behr))
-full_preds_sf_gdm <- read_rds(here("output", "spreadsheets", "full_preds_sf_gdm.rds")) %>% 
+full_preds_sf_gdm <- read_rds(here("output", "spreadsheets", "full_preds_sf_gdm.rds")) |> 
   map(~st_set_crs(.x, crs_behr))
 
 
@@ -1119,36 +1131,36 @@ sp_lat_quad_gde <- map2(splits_sf, coords_full, ~modified.ttest(x = abs(.y[,2]^2
 
 sp_lat_quad_gdm <- map2(splits_sf, coords_full, ~modified.ttest(x = abs(.y[,2]), y = .x$gdm, coords = .y))
 
-map(sp_lat_gde, ~.x[["p.value"]]) %>% 
-  bind_rows() %>% 
+map(sp_lat_gde, ~.x[["p.value"]]) |> 
+  bind_rows() |> 
   knitr::kable(caption = "Latitude p-values (GDE)")
 
-map(sp_lat_gde, ~.x[["corr"]]) %>% 
-  bind_rows() %>% 
+map(sp_lat_gde, ~.x[["corr"]]) |> 
+  bind_rows() |> 
   knitr::kable(caption = "Latitude correlation coefficients (GDE)")
 
-map(sp_lat_gdm, ~.x[["p.value"]]) %>% 
-  bind_rows() %>% 
+map(sp_lat_gdm, ~.x[["p.value"]]) |> 
+  bind_rows() |> 
   knitr::kable(caption = "Latitude p-values (GDM)")
 
-map(sp_lat_gdm, ~.x[["corr"]]) %>% 
-  bind_rows() %>% 
+map(sp_lat_gdm, ~.x[["corr"]]) |> 
+  bind_rows() |> 
   knitr::kable(caption = "Latitude correlation coefficients (GDM)")
 
-map(sp_lat_quad_gde, ~.x[["p.value"]]) %>% 
-  bind_rows() %>% 
+map(sp_lat_quad_gde, ~.x[["p.value"]]) |> 
+  bind_rows() |> 
   knitr::kable(caption = "Latitude p-values (GDE quad)")
 
-map(sp_lat_quad_gde, ~.x[["corr"]]) %>% 
-  bind_rows() %>% 
+map(sp_lat_quad_gde, ~.x[["corr"]]) |> 
+  bind_rows() |> 
   knitr::kable(caption = "Latitude correlation coefficients (GDE quad)")
 
-map(sp_lat_quad_gdm, ~.x[["p.value"]]) %>% 
-  bind_rows() %>% 
+map(sp_lat_quad_gdm, ~.x[["p.value"]]) |> 
+  bind_rows() |> 
   knitr::kable(caption = "Latitude p-values (GDM quad)")
 
-map(sp_lat_quad_gdm, ~.x[["corr"]]) %>% 
-  bind_rows() %>% 
+map(sp_lat_quad_gdm, ~.x[["corr"]]) |> 
+  bind_rows() |> 
   knitr::kable(caption = "Latitude correlation coefficients (GDM quad)")
 ```
 
@@ -1226,20 +1238,20 @@ sp_ttest_gde <- map2(splits_sf, coords_full, ~modified.ttest(x = .x$freezeline, 
 
 sp_ttest_gdm <- map2(splits_sf, coords_full, ~modified.ttest(x = .x$freezeline, y = .x$gdm, coords = .y))
 
-map(sp_ttest_gde, ~.x[["p.value"]]) %>% 
-  bind_rows() %>% 
+map(sp_ttest_gde, ~.x[["p.value"]]) |> 
+  bind_rows() |> 
   knitr::kable(caption = "Freezeline p-values (GDE)")
 
-map(sp_ttest_gde, ~.x[["corr"]]) %>% 
-  bind_rows() %>% 
+map(sp_ttest_gde, ~.x[["corr"]]) |> 
+  bind_rows() |> 
   knitr::kable(caption = "Freezeline correlation coefficients (GDE)")
 
-map(sp_ttest_gdm, ~.x[["p.value"]]) %>% 
-  bind_rows() %>% 
+map(sp_ttest_gdm, ~.x[["p.value"]]) |> 
+  bind_rows() |> 
   knitr::kable(caption = "Freezeline p-values (GDM)")
 
-map(sp_ttest_gdm, ~.x[["corr"]]) %>% 
-  bind_rows() %>% 
+map(sp_ttest_gdm, ~.x[["corr"]]) |> 
+  bind_rows() |> 
   knitr::kable(caption = "Freezeline correlation coefficients (GDM)")
 ```
 
@@ -1300,12 +1312,12 @@ Multivariate Environmental Similarity Surfaces for all OTU thresholds/models.
 #| label: mess-data
 
 # get predictor set for each model
-pred_vars_gde <- map(glmm_gde, get_beta_posts) %>% 
-  map(colnames) %>% 
+pred_vars_gde <- map(glmm_gde, get_beta_posts) |> 
+  map(colnames) |> 
   map(~.x[str_detect(.x, "Dummy", negate = TRUE)])
 
-pred_vars_gdm <- map(glmm_gdm, get_beta_posts) %>% 
-  map(colnames) %>% 
+pred_vars_gdm <- map(glmm_gdm, get_beta_posts) |> 
+  map(colnames) |> 
   map(~.x[str_detect(.x, "Dummy", negate = TRUE)])
 
 
@@ -1318,7 +1330,7 @@ full_scaled_noNA <- map(full_scaled, ~filter(.x, complete.cases(across(any_of(pr
 
 full_scaled_noNA_sf <-
   map(full_scaled_noNA,
-      ~ st_as_sf(.x, coords = c("lon", "lat"), crs = crs_behr) %>%
+      ~ st_as_sf(.x, coords = c("lon", "lat"), crs = crs_behr) |>
         st_join(x = select(full_sf_noNA, geometry)))
 
 
@@ -1329,8 +1341,8 @@ full_scaled_rasters_gdm <-
   map2(full_scaled_noNA_sf, pred_vars_gdm, ~rasterize_preds(df = .x, rast_template = template_medium, pred_vars = .y))
 
 
-scaled_preds_gde <- map2(train_scaled, pred_vars_gde, ~select(.x, all_of(.y)) %>% as.matrix())
-scaled_preds_gdm <- map2(train_scaled, pred_vars_gdm, ~select(.x, all_of(.y)) %>% as.matrix())
+scaled_preds_gde <- map2(train_scaled, pred_vars_gde, ~select(.x, all_of(.y)) |> as.matrix())
+scaled_preds_gdm <- map2(train_scaled, pred_vars_gdm, ~select(.x, all_of(.y)) |> as.matrix())
 
 ```
 
@@ -1339,10 +1351,10 @@ scaled_preds_gdm <- map2(train_scaled, pred_vars_gdm, ~select(.x, all_of(.y)) %>
 #| eval: false
 
 
-mess_gde <- map2(full_scaled_rasters_gde, scaled_preds_gde, dismo::mess) %>% 
+mess_gde <- map2(full_scaled_rasters_gde, scaled_preds_gde, dismo::mess) |> 
   map(mess_to_poly)
 
-mess_gdm <- map2(full_scaled_rasters_gdm, scaled_preds_gdm, dismo::mess) %>% 
+mess_gdm <- map2(full_scaled_rasters_gdm, scaled_preds_gdm, dismo::mess) |> 
   map(mess_to_poly)
 
 ```

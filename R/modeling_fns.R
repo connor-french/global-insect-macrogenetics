@@ -1,16 +1,16 @@
 # perform pca on the predictors to make sure the predictor space in the validation data isn't outside the range of the training data 
 # extrapolation would be indicated by test data being clustered at the edges of the PCA plot
 run_predictor_pca <- function(train_data, folds) {
-  recipe(~., data = train_data) %>% 
-    step_pca(all_predictors()) %>% 
-    prep() %>% 
-    bake(new_data = NULL) %>%
-    bind_cols(train_data) %>% 
+  recipe(~., data = train_data) |> 
+    step_pca(all_predictors()) |> 
+    prep() |> 
+    bake(new_data = NULL) |>
+    bind_cols(train_data) |> 
     mutate(split_1 = if_else(row_number() %in% folds$splits[[1]]$in_id, "train", "test"),
            split_2 = if_else(row_number() %in% folds$splits[[2]]$in_id, "train", "test"),
            split_3 = if_else(row_number() %in% folds$splits[[3]]$in_id, "train", "test"),
            split_4 = if_else(row_number() %in% folds$splits[[4]]$in_id, "train", "test"),
-           split_5 = if_else(row_number() %in% folds$splits[[5]]$in_id, "train", "test")) %>% 
+           split_5 = if_else(row_number() %in% folds$splits[[5]]$in_id, "train", "test")) |> 
     pivot_longer(starts_with("split"), names_to = "split_number", values_to = "cv_split")
 }
 
@@ -21,7 +21,7 @@ run_predictor_pca <- function(train_data, folds) {
 
 ssf_to_sf <- function(splits) {
   for (i in 1:length(splits)) {
-    splits[[i]]$data <- as_tibble(splits[[i]]$data) %>% select(-geometry)
+    splits[[i]]$data <- as_tibble(splits[[i]]$data) |> select(-geometry)
   }
   return(splits)
 }
@@ -30,9 +30,9 @@ ssf_to_sf <- function(splits) {
 # center and scale data
 scale_data <- function(df) {
   c <- st_coordinates(st_centroid(df))
-  df_ll <- df %>%
-    as_tibble() %>%
-    select(-geometry) %>%
+  df_ll <- df |>
+    as_tibble() |>
+    select(-geometry) |>
     mutate(
       lon = c[, "X"],
       lat = c[, "Y"],
@@ -52,7 +52,7 @@ scale_data <- function(df) {
                  "temp_trend",
                  "temp_var")
   
-  df_scaled <- df_ll %>% 
+  df_scaled <- df_ll |> 
     mutate(across(all_of(pred_vars), ~scale(.x)[,1]))
   
   return(df_scaled)
@@ -190,9 +190,9 @@ get_beta_posts <- function(mod_obj) {
 scale_test <- function(df_train, df_test) {
   c <- st_coordinates(st_centroid(df_test))
   
-  df_test <- df_test %>%
-    as_tibble() %>%
-    select(-geometry) %>%
+  df_test <- df_test |>
+    as_tibble() |>
+    select(-geometry) |>
     mutate(
       lon = c[, "X"],
       lat = c[, "Y"],
@@ -229,20 +229,21 @@ plot_obs_vs_pred <- function(df, resp) {
   
   lt <- summary(lm(formula(paste(resp, "~", ".pred")), data = df))
   
-  r_2 <- lt$r.squared %>% 
+  r_2 <- lt$r.squared |> 
     round(2)
   
-  slope <- lt$coefficients[,1][[".pred"]] %>% 
+  slope <- lt$coefficients[,1][[".pred"]] |> 
     round(2)
   
-  intercept <- lt$coefficients[,1][["(Intercept)"]] %>% 
+  intercept <- lt$coefficients[,1][["(Intercept)"]] |> 
     round(3)
   
-  rmse <- yardstick::rmse_vec(truth = df[[resp]], estimate = df[[".pred"]]) %>% 
+  rmse <- yardstick::rmse_vec(truth = df[[resp]], estimate = df[[".pred"]]) |> 
     round(3)
   
   ggplot(df, aes_string(x = ".pred", y = resp)) +
-    geom_point(fill = "darkgray", color = "black", shape = 21) +
+    geom_point(aes(fill = continent), color = "black", shape = 21) +
+    scale_fill_viridis_d() +
     geom_smooth(color = "red",
                 method = "lm",
                 formula = "y ~ x") +
@@ -261,6 +262,7 @@ map_test <- function(df, var = c(".pred", ".pred_ci", ".resid", ".log_ci")) {
     geom_sf(data = df, aes_string(color = var[1], fill = var[1])) +
     scale_color_viridis_c() +
     scale_fill_viridis_c() +
+    coord_sf(expand = FALSE) +
     theme_bw()
 }
 
@@ -310,20 +312,20 @@ run_latitude <- function(response = "gde", df, nknots = 20) {
 
 rasterize_preds <- function(df, rast_template, pred_vars) {
   rasters <- map(pred_vars, ~fasterize::fasterize(sf = df, raster = rast_template, field = .x))
-  s <- stack(rasters) %>% round(5)
+  s <- stack(rasters) |> round(5)
   names(s) <- pred_vars
   return(s)
 }
 
 # function to convert the mess values to a polygon layer for easy masking of the final maps
 mess_to_poly <- function(mess) {
-  mess %>%
-    rasterToPolygons() %>%
-    st_as_sf(crs = crs_behr) %>%
+  mess |>
+    rasterToPolygons() |>
+    st_as_sf(crs = crs_behr) |>
     mutate(
       mess_val = na_if(mess, "Inf"),
       mess_binary = if_else(mess_val < -1e-8, "non_analogous", "analogous")
-    ) %>%
+    ) |>
     select(-mess)
 }
 
@@ -331,9 +333,10 @@ mess_to_poly <- function(mess) {
 
 map_mess <- function(mess) {
   ggplot() +
-    geom_sf(data = st_geometry(world_small)) +
+    geom_sf(data = st_geometry(world_base_map)) +
     geom_sf(data = mess, aes(color = mess_binary, fill = mess_binary)) +
     scale_color_manual(values = c("#56B4E9", "#E69F00"), na.value = "transparent", aesthetics = c("color", "fill"), na.translate = FALSE) +
+    coord_sf(expand = FALSE) +
     theme_bw()
 }
 
