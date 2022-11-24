@@ -1,5 +1,6 @@
 # helper functions for various scripts
 
+crs_behr <- crs_behr <- "+proj=cea +lon_0=0 +lat_ts=30 +x_0=0 +y_0=0 +datum=WGS84 +ellps=WGS84 +units=m +no_defs"
 
 ##### %notin% ############
 # a function to make it easier and more succinct to negate a vector for filtering
@@ -725,7 +726,10 @@ full_sf_100 <- read_sf(here("output", "spreadsheets", "full_sf.geojson"),
 # plot sampling bias
 plot_samp <- function(x, resp = "gdm", pred = "num_ind") {
   
-  x_lab <- ifelse(pred == "num_ind", "Number of individuals", "Number of OTUs")
+  x_lab <- case_when(
+    pred == "num_ind" ~ "Number of individuals", 
+    pred == "num_otu" ~ "Number of OTUs",
+    pred == "lat" ~ "Latitude")
   
   ggplot(data = x, aes_string(x = pred, y = resp)) +
     geom_point(size = 2) +

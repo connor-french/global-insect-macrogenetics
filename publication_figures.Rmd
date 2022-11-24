@@ -293,8 +293,8 @@ gde_frz_line <- model_data |>
 df_boxplot <- model_data |> 
   mutate(min_temp = fct_relevel(min_temp, "tropical", "temperate")) |> 
   mutate(min_temp = case_when(
-    min_temp == "tropical" ~ "Above Freeze-line\n(Observed Data)",
-    min_temp == "temperate" ~ "\nBelow Freeze-line\n(Observed Data)"
+    min_temp == "tropical" ~ "Min. temp. above 0°C\n(Observed Data)",
+    min_temp == "temperate" ~ "\n\nMin. temp. below 0°C\n(Observed Data)"
   ))
 
 ```
@@ -326,7 +326,7 @@ r2_df_gdm <- tibble(
 
 ```{r, r2-gdm-inset}
 r2_gdm_plot <- ggplotGrob(ggplot(data = r2_df_gdm, aes(x = post)) +
-  geom_density(color = col_gdm, size = 1) +
+  geom_density(color = col_gdm, linewidth = 1) +
   geom_density(fill = col_gdm, color = "transparent", alpha = 0.4) +
   labs(x = bquote(~R^2)) +
   theme_insects() +
@@ -339,7 +339,7 @@ r2_gdm_plot <- ggplotGrob(ggplot(data = r2_df_gdm, aes(x = post)) +
 
 ```{r, r2-gde-inset}
 r2_gde_plot <- ggplotGrob(ggplot(data = r2_df_gde, aes(x = post)) +
-  geom_density(color = col_gde, size = 1) +
+  geom_density(color = col_gde, linewidth = 1) +
   geom_density(fill = col_gde, color = "transparent", alpha = 0.4) +
   labs(x = bquote(~R^2)) +
   theme_insects() +
@@ -546,7 +546,7 @@ full_posterior_plot
 Write to file. For whatever reason, panel tag **d)** moves too far to the right, so I have to edit it in Inkscape.   
 
 ```{r, eval=FALSE}
-ggsave(filename = here("output", "publication_figs", "posterior_fig.svg"),
+ggsave(filename = here("output", "publication_figs", "posterior_fig.pdf"),
        plot = full_posterior_plot,
        width = 36,
        height = 22.5,
@@ -2659,6 +2659,9 @@ Per the great suggestion by Rob Anderson (comment here for posterity):
 full_sf_100 <- read_sf(here("output", "spreadsheets", "full_sf.geojson"),
                    crs = crs_behr) |> 
   filter(num_otu >= 100)
+
+full_sf_100 <-
+  mutate(full_sf_100, lat = abs(st_coordinates(st_centroid(st_transform(full_sf_100, crs = 4326)))[, "Y"]))
 
 raw_pi <- read_csv(here("output", "spreadsheets", "cell_medium_3_10_pi.csv")) 
 
