@@ -1,8 +1,3 @@
----
-editor_options: 
-  markdown: 
-    wrap: 72
----
 
 # Code for the manuscript: **Global determinants of insect genetic diversity** 
 
