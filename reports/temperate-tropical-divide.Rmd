@@ -1,8 +1,7 @@
 ---
 title: "Temperate-Tropical Split"
 author: "Connor French"
-date: "7/23/2020"
-output: html_document
+output: github_document
 ---
 
 I'm splitting the globe into a temperate-tropical divide based on: 
@@ -35,7 +34,7 @@ binary_poly
 ```
 
 Group the polygons by the binary classification and simplify to two polygons
-```{r}
+```{r, eval=FALSE}
 binary_union <- binary_poly %>% 
   mutate(min_temp = if_else(min_temp_binary.tif > 0, "tropical", "temperate")) %>% 
   group_by(min_temp) %>% 
@@ -44,9 +43,17 @@ binary_union <- binary_poly %>%
 
 ```
 
+```{r, echo=FALSE}
+binary_union <- read_sf(here("data", "climate_poly", "min_temp_binary.geojson"))
+```
+
 
 ```{r}
 plot(binary_union)
+```
+
+```{r,eval=FALSE}
+st_write(binary_union, here("data", "climate_poly", "min_temp_binary.geojson"))
 ```
 
 

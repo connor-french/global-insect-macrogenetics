@@ -1,17 +1,11 @@
----
-title: "Data exploration"
-output: github_document
----
-
-```{r, setup, include=FALSE}
-knitr::opts_chunk$set(
-  eval = FALSE
-)
-```
+Data exploration
+================
 
 ## Setup
-Load packages  
-```{r load-packages, message=FALSE, warning=FALSE}
+
+Load packages
+
+``` r
 library(raster)
 library(tidyverse)
 library(tidymodels)
@@ -41,7 +35,8 @@ source("R/helper_functions.R")
 ```
 
 ### Map helpers
-```{r map-helpers}
+
+``` r
 pal <- wes_palette("Zissou1", 100, type = "continuous")
 
 # for assigning cells to continents. Islands are missed at coarser resolutions
@@ -55,10 +50,12 @@ world_base_map <- rnaturalearth::ne_countries(scale = "small", returnclass = "sf
   st_transform(crs = "+proj=cea +lon_0=0 +lat_ts=30 +x_0=0 +y_0=0 +datum=WGS84 +ellps=WGS84 +units=m +no_defs") 
 ```
 
-
 ## Data wrangling
-Read in the data. Two main data sources- the genetic summary statistics and the environmental data. 
-```{r data}
+
+Read in the data. Two main data sources- the genetic summary statistics
+and the environmental data.
+
+``` r
 sumstats <- read_csv(here("output", "spreadsheets", "cell_medium_3_10_sumstats.csv"))
 
 rast_list_medium <- list.files(here("data", "climate_agg"),
@@ -73,20 +70,20 @@ rasters_full_medium
 ```
 
 Write raster maps to file for visual inspection.
-```{r}
+
+``` r
 pdf(file = here("output", "exploratory_plots", "predictor_rasters.pdf"))
 for (i in 1:nlayers(rasters_full_medium)) {
   plot(rasters_full_medium[[i]], main = names(rasters_full_medium[[i]]))
   plot(st_geometry(world_base_map), add=TRUE)
 }
 dev.off()
-
 ```
 
+Extract raster values for each cell that has genetic summary data and
+join the data frames for a full data set.
 
-
-Extract raster values for each cell that has genetic summary data and join the data frames for a full data set. 
-```{r full-data}
+``` r
 explanatory_df <- rasters_full_medium[sumstats$cell] %>% 
   as_tibble() %>% 
   mutate(cell = sumstats$cell) 
@@ -99,8 +96,11 @@ full_df <- left_join(sumstats, explanatory_df, by = "cell") %>%
 glimpse(full_df)
 ```
 
-Convert this to a `sf` polygon object for mapping and spatial cross validation. Also, extracting the continent for each polygon (largest overlap) to assess sampling imbalance.
-```{r continents}
+Convert this to a `sf` polygon object for mapping and spatial cross
+validation. Also, extracting the continent for each polygon (largest
+overlap) to assess sampling imbalance.
+
+``` r
 template_medium <- raster(here("data", "templates", "template_medium.tif"))
 
 template_medium[full_df$cell] <- full_df$avg_pi
@@ -116,8 +116,9 @@ full_sf <- rasterToPolygons(template_medium) %>%
 glimpse(full_sf)
 ```
 
-Visualizing temperature to make sure the conversion was successful. 
-```{r temp-vis}
+Visualizing temperature to make sure the conversion was successful.
+
+``` r
 ggplot() +
   geom_sf(data = full_sf, aes(fill = current_medium_bio_1, color = current_medium_bio_1)) +
   scale_fill_gradientn(colors = pal) +
@@ -125,23 +126,31 @@ ggplot() +
   theme_minimal()
 ```
 
-
 ### Continent mapping
-How many cells successfully mapped to a continent, and what is the sample size? Looks like 2 cells did not map correctly.
-```{r continent-count}
+
+How many cells successfully mapped to a continent, and what is the
+sample size? Looks like 2 cells did not map correctly.
+
+``` r
 full_sf %>% 
   count(continent)
 ```
 
-Visualize which cells mapped correctly. All of the "Open Ocean" values are islands around Africa. Although these may politically be assigned a different continent (e.g. some islands around Madagascar are European), spatially they're near Africa, so I'm classifying them as African.  
-```{r continent-map, cache=TRUE}
+Visualize which cells mapped correctly. All of the “Open Ocean” values
+are islands around Africa. Although these may politically be assigned a
+different continent (e.g. some islands around Madagascar are European),
+spatially they’re near Africa, so I’m classifying them as African.
+
+``` r
 ggplot() + 
   geom_sf(data = world_base_map) +
   geom_sf(data = full_sf, aes(fill = continent, color = continent))
 ```
 
-Converting the cells and taking another look. Looks fine, except for the NA. 
-```{r continent-map-2, cache=TRUE}
+Converting the cells and taking another look. Looks fine, except for the
+NA.
+
+``` r
 full_sf <- full_sf %>% 
   mutate(continent = ifelse(str_detect(continent, "Seven"), "Africa", continent))
 
@@ -150,17 +159,19 @@ ggplot() +
   geom_sf(data = full_sf, aes(fill = continent, color = continent))
 ```
 
+Let’s see where the NA is. Looks like South America!
 
-Let's see where the NA is. Looks like South America! 
-```{r na-find, cache=TRUE}
+``` r
 full_sf %>% 
   mutate(na_cont = if_else(is.na(continent), "Missing", "Present")) %>% 
   ggplot() + 
   geom_sf(aes(fill = na_cont, color = na_cont))
 ```
 
-Replacing the NA value with "South America". North America has the most representation, while South America has the least.
-```{r continent-sampling}
+Replacing the NA value with “South America”. North America has the most
+representation, while South America has the least.
+
+``` r
 full_complete <- full_sf %>% 
   mutate(continent = if_else(is.na(continent), "South America", continent))
 
@@ -173,8 +184,10 @@ count(full_complete, continent) %>% mutate(perc = n / sum(n)) %>%
 
 ### Predictor variables
 
-Predictors have between 0 and 11 NAs. Need to see if these are for the same cells or not
-```{r missing-data}
+Predictors have between 0 and 11 NAs. Need to see if these are for the
+same cells or not
+
+``` r
 full_complete %>% 
   summarize_all(~sum(is.na(.))) %>% 
   pivot_longer(cols = !contains("geometry"), 
@@ -183,8 +196,10 @@ full_complete %>%
   filter(num_NA > 0)
 ```
 
-It seems like there is some overlap with the missing data, but we're going to have to throw out 9 cells.
-```{r}
+It seems like there is some overlap with the missing data, but we’re
+going to have to throw out 9 cells.
+
+``` r
 nrow_filt <- full_complete %>% 
   na.omit() %>% 
   nrow()
@@ -192,11 +207,12 @@ nrow_filt <- full_complete %>%
 nrow(full_complete) - nrow_filt
 ```
 
-
 #### Missing data
-Let's see what the distribution of cells with an NA is. Most are islands, and there are a few from the Arctic.
-```{r, cache=TRUE}
 
+Let’s see what the distribution of cells with an NA is. Most are
+islands, and there are a few from the Arctic.
+
+``` r
 full_missing <- full_complete[rowSums(is.na(full_complete)) > 0,]
 
 ggplot() +
@@ -204,14 +220,17 @@ ggplot() +
   geom_sf(data = full_missing, aes(fill = continent, color = continent))
 ```
 
-What is the sample size per cell? These are info-rich cells, but there are too many variables to get this info back from to where I don't think the effort is worth it. I'm going to remove them and call it good.
-```{r}
+What is the sample size per cell? These are info-rich cells, but there
+are too many variables to get this info back from to where I don’t think
+the effort is worth it. I’m going to remove them and call it good.
+
+``` r
 full_missing %>% select(continent, num_otu, num_ind, num_order)
 ```
 
-
 Filter NAs. Also adding in latitude and longitude columns.
-```{r}
+
+``` r
 full_filter <- full_complete %>% 
   remove_missing() 
 
@@ -227,7 +246,8 @@ glimpse(full_filter)
 ```
 
 Map the latitude to make sure I got the correct column.
-```{r}
+
+``` r
 ggplot() +
   geom_sf(data = full_filter, aes(fill = latitude, color = latitude)) +
   scale_fill_gradientn(colors = pal) + 
@@ -237,8 +257,12 @@ ggplot() +
 ### Data exploration
 
 #### Read and filter
-Read in genetic summary data for the least restrictive high resollution and medium resolution genetic filtering regimes. I can impose more restrictive filtering protocols from there.
-```{r}
+
+Read in genetic summary data for the least restrictive high resollution
+and medium resolution genetic filtering regimes. I can impose more
+restrictive filtering protocols from there.
+
+``` r
 # least restrictive 3 individual filtering regimes
 #high_3_df <- read_csv(here("output", "spreadsheets", "cell_high_3_10_sumstats.csv"))
 med_3_df <- read_csv(here("output", "spreadsheets", "cell_medium_3_10_sumstats.csv"))
@@ -246,13 +270,11 @@ med_3_df <- read_csv(here("output", "spreadsheets", "cell_medium_3_10_sumstats.c
 
 # least restrictive 5 individual filtering regime
 #high_5_df <- read_csv(here("output", "spreadsheets", "cell_high_5_10_sumstats.csv"))
-
-
-
 ```
 
 Read in predictor variables
-```{r}
+
+``` r
 # rast_list_high <- list.files(here("data", "climate_agg"),
 #                         pattern = "high",
 #                         full.names = TRUE)
@@ -274,11 +296,11 @@ crs(rasters_full_medium) <- "+proj=cea +lon_0=0 +lat_ts=30 +x_0=0 +y_0=0 +datum=
 # 
 # rasters_full_low <- raster::stack(rast_list_low)
 # crs(rasters_full_low) <- "+proj=cea +lon_0=0 +lat_ts=30 +x_0=0 +y_0=0 +datum=WGS84 +ellps=WGS84 +units=m +no_defs"
-
 ```
 
 Join the predictors with the genetic summaries.
-```{r}
+
+``` r
 join_predictors <- function(gen_sumstats, pred_rasts, resolution) {
   exp_df <- pred_rasts[gen_sumstats$cell] %>%
     as_tibble() %>%
@@ -312,11 +334,11 @@ med_3_full <- join_predictors(med_3_df, rasters_full_medium, "medium")
 # nrow(high_5_full)
 nrow(med_3_full)
 # nrow(low_3_full)
-
 ```
 
 Filter each dataset for NAs.
-```{r}
+
+``` r
 filter_dfs <- function(df, resolution) {
   df_filtered <- df %>% 
     remove_missing()
@@ -335,12 +357,19 @@ nrow(med_3_filter)
 # nrow(low_3_filter)
 ```
 
-
 #### PCA
-Given that classes of variables are often highly correlated, I'm going to perform principle component analysis on sets of predictor variables and create new composite variables to investigate.  
-Before performing the PCA on each data set, I'm going to create different data subsets, imposing stricter limits on the minimum number of OTUs per filtering regime.
-I'm doing this for: current temperature, current precipitation, global habitat heterogeneity, terrain continuous average, terrain continuous standard deviation, and terrain categorical (percentages).
-```{r}
+
+Given that classes of variables are often highly correlated, I’m going
+to perform principle component analysis on sets of predictor variables
+and create new composite variables to investigate.  
+Before performing the PCA on each data set, I’m going to create
+different data subsets, imposing stricter limits on the minimum number
+of OTUs per filtering regime. I’m doing this for: current temperature,
+current precipitation, global habitat heterogeneity, terrain continuous
+average, terrain continuous standard deviation, and terrain categorical
+(percentages).
+
+``` r
 all_dfs <- tibble(
   resolution = c(#paste(rep("high", 12, sep = ", ")), 
                  paste(rep("medium", 6, sep = ", "))#,
@@ -454,12 +483,12 @@ get_pc_scores <- function(df) {
 
 all_dfs_pca <- all_dfs %>% 
   mutate(df = map(df, get_pc_scores))
-
 ```
 
+Normalize all variables so they are centered (mean of 0) and scaled (sd
+= 1) for linear regression.
 
-Normalize all variables so they are centered (mean of 0) and scaled (sd = 1) for linear regression.
-```{r}
+``` r
 normalize_vars <- function(df_in) {
   norm_rec <- recipe(hill_1 ~ ., data = df_in) %>%
     step_normalize(all_numeric(), -cell, -num_otu, -num_ind, -num_order, -contains("_pi"), -contains("hill_"))
@@ -474,21 +503,21 @@ all_dfs_norm <- all_dfs_pca %>%
   mutate(df_norm = map(df, normalize_vars),
          filter_regime = paste(resolution, min_ind, min_otu, sep = "_")) %>% 
   select(-df)
-
-
 ```
 
 #### Map
-I'm filtering out data sets that I already know I'm not going to use.
-```{r}
+
+I’m filtering out data sets that I already know I’m not going to use.
+
+``` r
 all_dfs_norm <- all_dfs_norm %>% 
   filter(resolution == "medium",
          min_otu >= 100)
 ```
 
-
 Convert to sf
-```{r}
+
+``` r
 # functions to convert the data frames to sf objects
 to_sf <- function(df) {
   if (df$resolution[1] == "high") {
@@ -515,25 +544,45 @@ all_dfs_sf <- all_dfs_norm %>%
   mutate(df_sf = map(df_norm, to_sf))
 ```
 
-
 #### Correlations
-Exploring correlations among variables. Need to decide which to keep and which to throw out. I'm exploring the medium resolution, 150 km data set.  
 
-Here are the variables I value:
-**Climate**- Including all current bioclims in the correlation matrix. I am prioritizing the extremes (e.g. max temp of warmest month), average (e.g. average annual temp), then seasonality. Katie says seasonality shouldn't have a huge effect since insects tend to aestivate/hibernate when conditions aren't ideal. However, since insects are ectotherms, extremes likely represent limits to insect tolerances and averages summarize the overall climate regime of the area.
+Exploring correlations among variables. Need to decide which to keep and
+which to throw out. I’m exploring the medium resolution, 150 km data
+set.
 
-**Habitat**- I have two datasets summarizing habitat variability: the dynamic habitat indices and habitat heterogeneity. For both, I am prioritizing measures of spatial heterogeneity, followed by average, followed by seasonality. The habitat heterogeneity measures only correspond with spatial heterogeneity.  
+Here are the variables I value: **Climate**- Including all current
+bioclims in the correlation matrix. I am prioritizing the extremes
+(e.g. max temp of warmest month), average (e.g. average annual temp),
+then seasonality. Katie says seasonality shouldn’t have a huge effect
+since insects tend to aestivate/hibernate when conditions aren’t ideal.
+However, since insects are ectotherms, extremes likely represent limits
+to insect tolerances and averages summarize the overall climate regime
+of the area.
 
-**Terrain**- I am limiting terrain to slope median and standard deviation and elevation median and standard deviation. The rest are derived stats that I couldn't justify using. Prioritizing sd since variation likely drives genetic diversity more than average
+**Habitat**- I have two datasets summarizing habitat variability: the
+dynamic habitat indices and habitat heterogeneity. For both, I am
+prioritizing measures of spatial heterogeneity, followed by average,
+followed by seasonality. The habitat heterogeneity measures only
+correspond with spatial heterogeneity.
 
-**Land Cover**- No land cover: highly spatially autocorrelated variables that only make sense to use in conjunction with each other.  
+**Terrain**- I am limiting terrain to slope median and standard
+deviation and elevation median and standard deviation. The rest are
+derived stats that I couldn’t justify using. Prioritizing sd since
+variation likely drives genetic diversity more than average
 
-**Human**- only doing human modification since it's a specific measure of human environmental impact, rather than just human density  
+**Land Cover**- No land cover: highly spatially autocorrelated variables
+that only make sense to use in conjunction with each other.
 
-**Stability**- including both temperature and precipitation stability. I doubt they're correlated. Keeping temperature if so, since precipitation is more difficult to model in past climates. **NOTE** I ended up using *Theodoridis et al. 2020*'s climate stability measures (in "New climate stability"). 
+**Human**- only doing human modification since it’s a specific measure
+of human environmental impact, rather than just human density
 
+**Stability**- including both temperature and precipitation stability. I
+doubt they’re correlated. Keeping temperature if so, since precipitation
+is more difficult to model in past climates. **NOTE** I ended up using
+*Theodoridis et al. 2020*’s climate stability measures (in “New climate
+stability”).
 
-```{r}
+``` r
 df_corr <- all_dfs_norm %>% 
   filter(filter_regime == "medium_3_150") %>% 
   pull(df_norm) %>% 
@@ -552,21 +601,25 @@ df_corr <- all_dfs_norm %>%
     contains("gHM"),
     contains("stability")) %>% 
   corrr::correlate()
-
 ```
 
-I'm visualizing each set of variables separately first to make the correlations easier to interpret.
+I’m visualizing each set of variables separately first to make the
+correlations easier to interpret.
 
 ##### Climate
 
-Keeping: 
-BIO2 (mean diurnal range). It's uncorrelated with all other variables
-BIO5, BIO6 (max temp warmest month, min temp coldest month). They're uncorrelated with each other and aren't strongly correlated with many other variables. BIO5 is strongly correlated with BIO1, so I'm throwing out BIO1 since extremes are higher priority.
-BIO7 (temperature annual range). Represents extremes across the year.
-BIO13, BIO14 (precipitation of wettest month, precipitation of driest month).
-BIO15 (precipitation seasonality). Uncorrelated with BIO13 and BIO14. Also, precipitation seasonality varies regardless of temperate vs tropical regions, so maybe relevant on a global scale.
+Keeping: BIO2 (mean diurnal range). It’s uncorrelated with all other
+variables BIO5, BIO6 (max temp warmest month, min temp coldest month).
+They’re uncorrelated with each other and aren’t strongly correlated with
+many other variables. BIO5 is strongly correlated with BIO1, so I’m
+throwing out BIO1 since extremes are higher priority. BIO7 (temperature
+annual range). Represents extremes across the year. BIO13, BIO14
+(precipitation of wettest month, precipitation of driest month). BIO15
+(precipitation seasonality). Uncorrelated with BIO13 and BIO14. Also,
+precipitation seasonality varies regardless of temperate vs tropical
+regions, so maybe relevant on a global scale.
 
-```{r}
+``` r
 # climate correlation matrix
 remove_prefix <- function(x, pref = "current_medium_") {
   s <- str_remove_all(x, pref)
@@ -583,10 +636,18 @@ corrr::rplot(corr_clim)
 ```
 
 ##### Habitat
-I'm selecting cumulative DHI, var DHI, variance GHH, and standard deviation GHH, as these are uncorrelated with each other. While minimum DHI could be considered an "extreme", it does not reflect physiological limits, so since it was correlated with both cum DHI and var DHI, while those two variables are not correlated with each other, I'm going to select them since they likely explain more independent information than min DHI. There were many options for GHH, but variance was correlated with the fewest variables and standard deviation is uncorrelated with variance and also is a recognizable measure of variation.
 
-```{r}
+I’m selecting cumulative DHI, var DHI, variance GHH, and standard
+deviation GHH, as these are uncorrelated with each other. While minimum
+DHI could be considered an “extreme”, it does not reflect physiological
+limits, so since it was correlated with both cum DHI and var DHI, while
+those two variables are not correlated with each other, I’m going to
+select them since they likely explain more independent information than
+min DHI. There were many options for GHH, but variance was correlated
+with the fewest variables and standard deviation is uncorrelated with
+variance and also is a recognizable measure of variation.
 
+``` r
 corr_hab <- df_corr %>% 
   filter(str_detect(rowname, "ghh|dhi"),
          !str_detect(rowname, "PC")) %>% 
@@ -599,10 +660,12 @@ corr_hab <- df_corr %>%
 corrr::rplot(corr_hab)
 ```
 
-
 ##### Terrain
-Retaining elevation median and standard deviation. Both correlate with slope median and sd. Elevation likely matters more than slope.
-```{r}
+
+Retaining elevation median and standard deviation. Both correlate with
+slope median and sd. Elevation likely matters more than slope.
+
+``` r
 corr_terr <- df_corr %>% 
   filter(str_detect(rowname, "elevation|slope"),
          !str_detect(rowname, "geom")) %>% 
@@ -612,11 +675,19 @@ corrr::rplot(corr_terr)
 ```
 
 ##### Refined correlation matrix
-Now I'm going to look at a correlation matrix of this reduced set of variables. Priority is climate > habitat > human > terrain for selection. Climate variables most likely translate to a larger scale the best, and terrain variables are likely the most indirect predictors of genetic diversity. Habitat is probably most directly relevant, but the noise in the variables is likely very high at the coarse scales we're looking at. They're mostly measured at a fine scale.
 
+Now I’m going to look at a correlation matrix of this reduced set of
+variables. Priority is climate \> habitat \> human \> terrain for
+selection. Climate variables most likely translate to a larger scale the
+best, and terrain variables are likely the most indirect predictors of
+genetic diversity. Habitat is probably most directly relevant, but the
+noise in the variables is likely very high at the coarse scales we’re
+looking at. They’re mostly measured at a fine scale.
 
-Bioclims 6 and 7 are both correlated with bio 13, and bioclim 6 is correlated with DHI var, so I'm removing them. 
-```{r}
+Bioclims 6 and 7 are both correlated with bio 13, and bioclim 6 is
+correlated with DHI var, so I’m removing them.
+
+``` r
 climate_vars <- c("bio_2", "bio_5", "bio_6", "bio_7", "bio_13", "bio_14", "bio_15")
 habitat_vars <- c("_cum", "_var", "_variance", "std_dev")
 terrain_vars <- c("elevation_median", "elevation_sd")
@@ -636,7 +707,8 @@ corr_reduced <- df_corr %>%
 ```
 
 Get final correlation matrix. Everything looks good!
-```{r}
+
+``` r
 corr_final <- corr_reduced %>% 
   filter(!str_detect(rowname, "bio_6|bio_7")) %>% 
   select(-contains("bio_6"), -contains("bio_7"))
@@ -647,8 +719,10 @@ corrr::rplot(corr_final)
 ```
 
 ##### New climate stability
+
 Read data in and wrangle into an appropriate form.
-```{r}
+
+``` r
 template_medium_rast <- raster(here("data", "templates", "template_medium.tif"))
 
 new_stab_files <- list.files(here("data", "climate_agg"), 
@@ -697,17 +771,17 @@ new_stab_spatial <- new_stab_df %>%
 ```
 
 Write the new data frame and projected new stability layer to file.
-```{r, eval=FALSE}
+
+``` r
 st_write(new_stab_sf, here("data", "climate_poly", "new_stability.geojson"))
 write_csv(new_stab_spatial, here("output", "spreadsheets", "model_data.csv"))
 ```
 
-
 ## Extreme cell resampling
 
-Read in data  
+Read in data
 
-```{r}
+``` r
 pw_pi <- read_csv(here("output", "spreadsheets", "med_3_150_pi.csv"))
 
 analysis_data <- read_csv(here("output", "spreadsheets", "model_data.csv"))
@@ -722,10 +796,9 @@ pi_ordered <- pw_pi_filt %>%
   ungroup()
 ```
 
-
 Resampling functions
 
-```{r}
+``` r
 hill_resample <- function(pi_in) {
   rs_pi <- rerun(1000, sample(pi_in, 150) %>% hill_calc()) %>% 
     unlist()
@@ -739,9 +812,9 @@ gdm_resample <- function(pi_in) {
 }
 ```
 
-Resampling  
+Resampling
 
-```{r}
+``` r
 dense_cells <- pi_ordered %>% 
   count(cell) %>% 
   slice_max(order_by = n, n = 10) %>% 
@@ -758,13 +831,11 @@ gdm_res_df <- pi_ordered %>%
   filter(cell %in% dense_cells) %>% 
   group_by(cell) %>% 
   summarize(gdm_res = gdm_resample(pi_in = pi))
-
 ```
 
-GDE  
+GDE
 
-```{r}
-
+``` r
 gr_gde <- gde_res_df %>% 
   mutate(cell = as.factor(cell)) %>% 
   ggplot(aes(x = gde_res, y = cell)) +
@@ -790,8 +861,7 @@ resample_plot_gde <- gr_gde +
 resample_plot_gde
 ```
 
-
-```{r}
+``` r
 gr_gdm <- gdm_res_df %>% 
   mutate(cell = as.factor(cell)) %>% 
   ggplot(aes(x = gdm_res, y = cell)) +
@@ -817,23 +887,19 @@ resample_plot_gdm <- gr_gdm +
 resample_plot_gdm
 ```
 
-Combo plot  
+Combo plot
 
-```{r}
+``` r
 combo_resample <- resample_plot_gdm / resample_plot_gde
 
 combo_resample
 ```
 
-
-
-
 ## Least restrictive data set
 
+Read in and combine data
 
-Read in and combine data  
-
-```{r}
+``` r
 med_3_df <- read_csv(here("output", "spreadsheets", "cell_medium_3_10_sumstats.csv"))
 
 
@@ -906,10 +972,7 @@ med_3_sf <- left_join(template_medium_sf, med_3_filter, by = "cell") %>%
          lat_scaled)
 ```
 
-
-
-```{r}
-
+``` r
 all_dfs <- tibble(
   resolution = c(
                  paste(rep("medium", 6, sep = ", "))
@@ -926,26 +989,19 @@ all_dfs <- tibble(
   )
   ) %>% 
   mutate(num_cells = map_int(df, nrow))
-
-
-
 ```
 
+Normalize all variables so they are centered (mean of 0) and scaled (sd
+= 1) for linear regression.
 
-Normalize all variables so they are centered (mean of 0) and scaled (sd = 1) for linear regression.
-```{r}
+``` r
 all_dfs_norm <- all_dfs %>% 
   mutate(df_norm = map(df, normalize_vars)) %>% 
   select(-df)
-
 ```
-
 
 Write to file
-```{r, eval=FALSE}
+
+``` r
 write_rds(all_dfs_norm, here("output", "spreadsheets", "model_data.rds"))
 ```
-
-
-
-

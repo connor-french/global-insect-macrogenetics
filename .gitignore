@@ -42,7 +42,11 @@ vignettes/*.pdf
 rsconnect/
 
 # data
-data/
+data/climate_raw/*
+data/climate_agg/*
+data/climate_poly/*
+data/bold_data_insects.db
+data/bold_data_insects.txt
 
 # output
 output/
