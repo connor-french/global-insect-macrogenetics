@@ -7,11 +7,9 @@ Where to find things:
 
 All climate data is available online at the links provided in
 Supplementary Table 1 or `meta/raster_list.csv`. The BOLD insect data is
-available at **figshare_link**. The only data folders that comes
-pre-populated are `data/templates`, which contains raster templates for
-aggregating raw climate data, and `data/invasive`, which contains
-spreadsheets with invasive species information for filtering out
-invasive species from the data set.
+available at **figshare_link**, which you can put in the `data/` folder.  
+
+The only data subfolders that come pre-populated are `data/templates`, which contains raster templates for aggregating raw climate data, and `data/invasive`, which contains spreadsheets with invasive species information for filtering out invasive species from the data set.
 
 For the scripts to run, you need to create the following folders:
 
