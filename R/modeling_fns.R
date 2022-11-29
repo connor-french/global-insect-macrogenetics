@@ -340,4 +340,12 @@ map_mess <- function(mess) {
     theme_bw()
 }
 
+# Function from Gelman et al. 2018 to calculate a bayes version of the R2 value. I modified it to account for the Gaussian Process variance.  
 
+bayes_R2_glmmfields <- function(fit) {
+  y_pred <- glmmfields::posterior_linpred(fit)
+  var_fit <- apply(y_pred, 1, var)
+  var_res <- as.matrix(fit$model, pars = c("sigma"))^2
+  var_gp <- as.matrix(fit$model, pars = c("gp_sigma"))^2
+  return(var_fit / (var_fit + var_res + var_gp))
+}
