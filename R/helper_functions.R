@@ -63,13 +63,11 @@ join_predictors <- function(gen_sumstats, pred_rasts, resolution){
   
   if (resolution == "high") {
     full_df <- left_join(gen_sumstats, exp_df, by = "cell") |> 
-      mutate(soil_high_hwsd = as.factor(soil_high_hwsd),
-             resolution = "high") |> 
+      mutate(resolution = "high") |> 
       arrange(cell)
   } else if (resolution == "medium") {
     full_df <- left_join(gen_sumstats, exp_df, by = "cell") |> 
-      mutate(soil_medium_hwsd = as.factor(soil_medium_hwsd),
-             resolution = "medium") |> 
+      mutate(resolution = "medium") |> 
       arrange(cell) 
   } else {
     full_df <- left_join(gen_sumstats, exp_df, by = "cell") |> 
@@ -81,11 +79,9 @@ join_predictors <- function(gen_sumstats, pred_rasts, resolution){
   return(full_df)
 }
 
-###### Filter dfs, removing plant phylo and missing data #####
+###### Filter for missing data #####
 filter_dfs <- function(df, resolution) {
-  plant_res <- paste0("plant_", resolution, "_plant_phylo")
   df_filtered <- df |> 
-    select(-c(plant_res)) |> 
     remove_missing()
   return(df_filtered)
 }
