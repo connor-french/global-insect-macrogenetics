@@ -1,6 +1,6 @@
 # Code for the manuscript: **Global determinants of insect genetic diversity**
 
-Currently on bioRxiv:\
+Currently on bioRxiv:
 > **Global determinants of insect genetic diversity**\
 Connor M French, Laura D Bertola, Ana C Carnaval, Evan P Economo, Jamie M Kass, David J Lohman, Katharine A Marske, Rudolf Meier, Isaac Overcast, Andrew J. Rominger, Phillip Staniczenko, Michael J Hickerson *bioRxiv* 2022.02.09.479762; doi: <https://doi.org/10.1101/2022.02.09.479762>
 
