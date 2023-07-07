@@ -1,5 +1,8 @@
 # Code for the manuscript: **Global determinants of insect genetic diversity**
 
+To cite this code:
+Connor M French, Laura D Bertola, Ana C Carnaval, Evan P Economo, Jamie M Kass, David J Lohman, Katharine A Marske, Rudolf Meier, Isaac Overcast, Andrew J. Rominger, Phillip Staniczenko, Michael J Hickerson. Global determinants of insect genetic diversity. https://github.com/connor-french/global-insect-macrogenetics/. 10.5281/zenodo.8125548. 2023.
+
 Currently on bioRxiv:
 > **Global determinants of insect genetic diversity**\
 Connor M French, Laura D Bertola, Ana C Carnaval, Evan P Economo, Jamie M Kass, David J Lohman, Katharine A Marske, Rudolf Meier, Isaac Overcast, Andrew J. Rominger, Phillip Staniczenko, Michael J Hickerson *bioRxiv* 2022.02.09.479762; doi: <https://doi.org/10.1101/2022.02.09.479762>
