@@ -11,7 +11,7 @@ Where to find things:
 
 ## Data
 
-All climate data is available online at the links provided in Supplementary Table 1 or `meta/raster_list.csv`. The BOLD insect data is available at **figshare_link** as `bold_data_insects.txt`, which belongs in the `data/` folder.
+All climate data is available online at the links provided in Supplementary Table 1 or `meta/raster_list.csv`. The BOLD insect data is available on [figshare](https://doi.org/10.6084/m9.figshare.c.6563836.v1) as `bold_data_insects.txt`, which belongs in the `data/` folder.
 
 The only data subfolders that come pre-populated are `data/templates`, which contains raster templates for aggregating raw climate data, and `data/invasive`, which contains spreadsheets with invasive species information for filtering out invasive species from the data set.
 
