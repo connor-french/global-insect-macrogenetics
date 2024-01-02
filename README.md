@@ -5,7 +5,7 @@ To cite this code:
 
 Open access in Nature Communications:
 > **Global determinants of insect genetic diversity**\
-Connor M French, Laura D Bertola, Ana C Carnaval, Evan P Economo, Jamie M Kass, David J Lohman, Katharine A Marske, Rudolf Meier, Isaac Overcast, Andrew J. Rominger, Phillip Staniczenko, Michael J Hickerson Nature Communications 14, 5276 (2023); doi: <https://doi.org/10.1101/2022.02.09.479762>
+Connor M French, Laura D Bertola, Ana C Carnaval, Evan P Economo, Jamie M Kass, David J Lohman, Katharine A Marske, Rudolf Meier, Isaac Overcast, Andrew J. Rominger, Phillip Staniczenko, Michael J Hickerson Nature Communications 14, 5276 (2023); doi: <https://doi.org/10.1038/s41467-023-40936-0>
 
 Where to find things:
 
