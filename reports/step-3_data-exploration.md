@@ -1,7 +1,5 @@
-Data exploration
-================
-
-## Setup
+Setup
+-----
 
 Load packages
 
@@ -50,7 +48,8 @@ world_base_map <- rnaturalearth::ne_countries(scale = "small", returnclass = "sf
   st_transform(crs = "+proj=cea +lon_0=0 +lat_ts=30 +x_0=0 +y_0=0 +datum=WGS84 +ellps=WGS84 +units=m +no_defs") 
 ```
 
-## Data wrangling
+Data wrangling
+--------------
 
 Read in the data. Two main data sources- the genetic summary statistics
 and the environmental data.
@@ -375,7 +374,7 @@ all_dfs <- tibble(
                  paste(rep("medium", 6, sep = ", "))#,
                  #paste(rep("low", 6, sep = ", "))
                  ),
-  min_ind = c(3L, 3L, 3L, 3L, 3L, 3L, 
+  min_ind = c(3L, 3L, 3L, 3L, 3L, 3L 
               #5L, 5L, 5L, 5L, 5L, 5L, 
 
               # 3L, 3L, 3L, 3L, 3L, 3L
@@ -600,7 +599,8 @@ df_corr <- all_dfs_norm %>%
          contains("dhi"),
     contains("gHM"),
     contains("stability")) %>% 
-  corrr::correlate()
+  corrr::correlate() %>% 
+  mutate(rowname = str_remove_all(term, "current_medium_"))
 ```
 
 I’m visualizing each set of variables separately first to make the
@@ -718,6 +718,14 @@ corr_final_vec <- corr_final$rowname
 corrr::rplot(corr_final)
 ```
 
+``` r
+# write the correlation matrices to file for publication
+write_csv(corr_clim, here("output", "spreadsheets", "corr_clim.csv"))
+write_csv(corr_hab, here("output", "spreadsheets", "corr_hab.csv"))
+write_csv(corr_terr, here("output", "spreadsheets", "corr_terr.csv"))
+write_csv(corr_final, here("output", "spreadsheets", "corr_final.csv"))
+```
+
 ##### New climate stability
 
 Read data in and wrangle into an appropriate form.
@@ -777,7 +785,8 @@ st_write(new_stab_sf, here("data", "climate_poly", "new_stability.geojson"))
 write_csv(new_stab_spatial, here("output", "spreadsheets", "model_data.csv"))
 ```
 
-## Extreme cell resampling
+Extreme cell resampling
+-----------------------
 
 Read in data
 
@@ -895,7 +904,8 @@ combo_resample <- resample_plot_gdm / resample_plot_gde
 combo_resample
 ```
 
-## Least restrictive data set
+Least restrictive data set
+--------------------------
 
 Read in and combine data
 

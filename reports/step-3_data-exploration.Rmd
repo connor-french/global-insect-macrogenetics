@@ -1,6 +1,8 @@
 ---
 title: "Data exploration"
-output: github_document
+output:
+  md_document:
+    variant: markdown_github
 ---
 
 ```{r, setup, include=FALSE}
@@ -346,7 +348,7 @@ all_dfs <- tibble(
                  paste(rep("medium", 6, sep = ", "))#,
                  #paste(rep("low", 6, sep = ", "))
                  ),
-  min_ind = c(3L, 3L, 3L, 3L, 3L, 3L, 
+  min_ind = c(3L, 3L, 3L, 3L, 3L, 3L 
               #5L, 5L, 5L, 5L, 5L, 5L, 
 
               # 3L, 3L, 3L, 3L, 3L, 3L
@@ -551,7 +553,8 @@ df_corr <- all_dfs_norm %>%
          contains("dhi"),
     contains("gHM"),
     contains("stability")) %>% 
-  corrr::correlate()
+  corrr::correlate() %>% 
+  mutate(rowname = str_remove_all(term, "current_medium_"))
 
 ```
 
@@ -646,8 +649,25 @@ corr_final_vec <- corr_final$rowname
 corrr::rplot(corr_final)
 ```
 
+
+```{r write-corr-mats-out, eval=FALSE}
+# write the correlation matrices to file for publication
+write_csv(corr_clim, here("output", "spreadsheets", "corr_clim.csv"))
+write_csv(corr_hab, here("output", "spreadsheets", "corr_hab.csv"))
+write_csv(corr_terr, here("output", "spreadsheets", "corr_terr.csv"))
+write_csv(corr_final, here("output", "spreadsheets", "corr_final.csv"))
+
+
+```
+
+
 ##### New climate stability
 Read data in and wrangle into an appropriate form.
+
+
+***Note: df_150 is lost to history (it was used in early explorations of the data and earlier code was changed, while this wasn't). 
+The two output files, "new_stability.geojson" and "model_data.csv", are now provided in `reports/new_stability.geojson` and `reports/model_data.csv`. `model_data.csv` is used to explore extreme 
+cell resampling, but `new_stability.geojson` is not used in subsequent analyses.***
 ```{r}
 template_medium_rast <- raster(here("data", "templates", "template_medium.tif"))
 
@@ -705,7 +725,9 @@ write_csv(new_stab_spatial, here("output", "spreadsheets", "model_data.csv"))
 
 ## Extreme cell resampling
 
-Read in data  
+Read in data.
+
+***Note: the file "model_data.csv" is now provided in `reports/model_data.csv`.***
 
 ```{r}
 pw_pi <- read_csv(here("output", "spreadsheets", "med_3_150_pi.csv"))

@@ -1,12 +1,15 @@
 ---
 title: "Publication Figures"
 author: "Connor French"
-output: github_document
+output:
+  md_document:
+    variant: markdown_github
+
 ---
 
 ```{r, include=FALSE}
 options(tinytex.verbose = TRUE)
-knitr::opts_chunk$set(echo=TRUE, warning=FALSE, message=FALSE)
+knitr::opts_chunk$set(echo=TRUE, eval=FALSE, warning=FALSE, message=FALSE)
 ```
 
 # Setup 
@@ -31,14 +34,14 @@ library(scales)
 library(ggspatial)
 library(data.table)
 library(bayesplot)
-# remotes::install_github("matthewkling/colormap")
-library(colormap)
+# `remotes::install_github("matthewkling/colors3d")`
+library(colors3d)
 library(viridis)
 library(socorro) # custom package, download like this:
                  # `remotes::install_github('ajrominger/socorro')`
 library(MCMCvis)
 
-# source helper functions
+# source helper functions`
 source(here("R", "helper_functions.R"))
 source(here("R", "modeling_fns.R"))
 
@@ -84,6 +87,7 @@ Set up parameters
 xx <- seq(0, 9, length.out = 100)
 pp <- ((1:length(xx)) - 0.5) / length(xx)
 
+set.seed(19384)
 #hiEvenDist <- dgamma(xx, 6, 2.5)
 hiEvenRank_loGDM <- qgamma(pp, 6, 2.5, lower.tail = FALSE)
 hiEvenRank_hiGDM <- qgamma(pp, 10, 2.5, lower.tail = FALSE)
@@ -110,7 +114,7 @@ Make plots
 
 Simulate a tree  
 
-```{r}
+```{r, eval=FALSE}
 tip_labels <- paste0("OTU_", 1:20)
 
 tip_labels[c(1, 4, 10:15, 16, 17)] <- " "

@@ -1,8 +1,5 @@
-Publication Figures
-================
-Connor French
-
-# Setup
+Setup
+=====
 
 Load packages
 
@@ -25,14 +22,14 @@ library(scales)
 library(ggspatial)
 library(data.table)
 library(bayesplot)
-# remotes::install_github("matthewkling/colormap")
-library(colormap)
+# `remotes::install_github("matthewkling/colors3d")`
+library(colors3d)
 library(viridis)
 library(socorro) # custom package, download like this:
                  # `remotes::install_github('ajrominger/socorro')`
 library(MCMCvis)
 
-# source helper functions
+# source helper functions`
 source(here("R", "helper_functions.R"))
 source(here("R", "modeling_fns.R"))
 
@@ -62,9 +59,11 @@ the order that they are positioned in the document, I am loading data
 for each figure independently. So, data may get loaded redundantly. The
 only data I’m reading in at the beginning are the two models
 
-# Main figurers
+Main figurers
+=============
 
-## GDE conceptual figure
+GDE conceptual figure
+---------------------
 
 The rank plots are adapted from Andy Rominger’s code in `R/GDE_figs.R`.
 I took the panes generated here and paneled them together with some
@@ -77,6 +76,7 @@ Set up parameters
 xx <- seq(0, 9, length.out = 100)
 pp <- ((1:length(xx)) - 0.5) / length(xx)
 
+set.seed(19384)
 #hiEvenDist <- dgamma(xx, 6, 2.5)
 hiEvenRank_loGDM <- qgamma(pp, 6, 2.5, lower.tail = FALSE)
 hiEvenRank_hiGDM <- qgamma(pp, 10, 2.5, lower.tail = FALSE)
@@ -118,8 +118,6 @@ names(gd_vals) <- tip_labels
 dotTree(species_tree, x = gd_vals, legend = FALSE, colors = "darkgreen")
 ```
 
-![](publication_figures_files/figure-gfm/unnamed-chunk-3-1.png)<!-- -->
-
 Write tree to file
 
 ``` r
@@ -143,15 +141,8 @@ set.seed(20)
 coal_tree_hi_gd <- rcoal(10, tip.label = tip_labels_coal)
 
 plotTree(coal_tree_low_gd)
-```
-
-![](publication_figures_files/figure-gfm/unnamed-chunk-5-1.png)<!-- -->
-
-``` r
 plotTree(coal_tree_hi_gd)
 ```
-
-![](publication_figures_files/figure-gfm/unnamed-chunk-5-2.png)<!-- -->
 
 Write trees to file
 
@@ -192,9 +183,6 @@ lines(pp, hiEvenRank_hiGDM, col = "darkorange", lwd = 2)
 dev.off()
 ```
 
-    ## quartz_off_screen 
-    ##                 2
-
 Low GDE, High GDM
 
 ``` r
@@ -213,9 +201,6 @@ lines(pp, loEvenRank, col = "darkorange", lwd = 2)
 
 dev.off()
 ```
-
-    ## quartz_off_screen 
-    ##                 2
 
 High GDE, Low GDM
 
@@ -236,9 +221,6 @@ lines(pp, hiEvenRank_loGDM, col = "darkorange", lwd = 2)
 dev.off()
 ```
 
-    ## quartz_off_screen 
-    ##                 2
-
 Low GDE, Low GDM
 
 ``` r
@@ -258,10 +240,8 @@ lines(pp, loEvenRank * 0.7, col = "darkorange", lwd = 2)
 dev.off()
 ```
 
-    ## quartz_off_screen 
-    ##                 2
-
-## Posterior summary figure
+Posterior summary figure
+------------------------
 
 ### Data processing
 
@@ -387,8 +367,6 @@ gde_posterior <- ggplot() +
 gde_posterior
 ```
 
-![](publication_figures_files/figure-gfm/gde-post-plot-1.png)<!-- -->
-
 GDM posterior pane.
 
 ``` r
@@ -418,8 +396,6 @@ gdm_posterior <- ggplot() +
 ``` r
 gdm_posterior
 ```
-
-![](publication_figures_files/figure-gfm/gdm-post-plot-1.png)<!-- -->
 
 #### Beta posterior panes
 
@@ -466,8 +442,6 @@ beta_post_gde <- param_posts_gde$B |>
 ``` r
 beta_post_gde
 ```
-
-![](publication_figures_files/figure-gfm/beta-gde-plot-1.png)<!-- -->
 
 Posteriors for GDM
 
@@ -518,8 +492,6 @@ beta_post_gdm <- param_posts_gdm$B |>
 beta_post_gdm
 ```
 
-![](publication_figures_files/figure-gfm/beta-gdm-plot-1.png)<!-- -->
-
 ``` r
 full_posterior_plot <- 
   (gdm_posterior + beta_post_gdm) / 
@@ -543,8 +515,6 @@ full_posterior_plot <-
 full_posterior_plot
 ```
 
-![](publication_figures_files/figure-gfm/unnamed-chunk-11-1.png)<!-- -->
-
 Write to file. For whatever reason, panel tag **d)** moves too far to
 the right, so I have to edit it in Inkscape.
 
@@ -557,7 +527,8 @@ ggsave(filename = here("output", "publication_figs", "posterior_fig.pdf"),
        unit = "cm")
 ```
 
-## Order sampling figure
+Order sampling figure
+---------------------
 
 Read in data and do some wrangling
 
@@ -605,8 +576,6 @@ order_fig <- pw_pi_prop |>
 order_fig
 ```
 
-![](publication_figures_files/figure-gfm/order-fig-1.png)<!-- -->
-
 Save to file
 
 ``` r
@@ -618,7 +587,8 @@ ggsave(filename = here("output", "publication_figs", "order_summary_fig.pdf"),
        unit = "cm")
 ```
 
-## Prediction Maps
+Prediction Maps
+---------------
 
 ### Map helpers
 
@@ -640,8 +610,6 @@ world_base_coast <- rnaturalearth::ne_coastline(scale = "large", returnclass = "
 ``` r
 plot(world_base_coast |> st_geometry())
 ```
-
-![](publication_figures_files/figure-gfm/coast-map-1.png)<!-- -->
 
 Read in and wrangle data
 
@@ -704,8 +672,6 @@ map_gdm <- suppressWarnings(map_pred(map_sf_filt_gdm, resp = "GDM")) + labs(titl
 map_gdm
 ```
 
-![](publication_figures_files/figure-gfm/gdm-pred-map-1.png)<!-- -->
-
 ### GDE
 
 ``` r
@@ -718,8 +684,6 @@ map_gde <- suppressWarnings(map_pred(map_sf_filt_gde, resp = "GDE", freezeline =
 ``` r
 map_gde
 ```
-
-![](publication_figures_files/figure-gfm/unnamed-chunk-19-1.png)<!-- -->
 
 ### 2D
 
@@ -750,8 +714,6 @@ map_2d <- suppressWarnings(map_pred(map_sf_combo, resp = "combo")) + labs(title 
 map_2d
 ```
 
-![](publication_figures_files/figure-gfm/unnamed-chunk-22-1.png)<!-- -->
-
 ### Combo map
 
 ``` r
@@ -763,8 +725,6 @@ combo_map <- map_gdm / map_gde / map_2d + plot_annotation(tag_levels = "a",
 ``` r
 combo_map
 ```
-
-![](publication_figures_files/figure-gfm/unnamed-chunk-24-1.png)<!-- -->
 
 Write figure to file
 
@@ -879,8 +839,6 @@ gd_var_map <-
 gd_var_map
 ```
 
-![](publication_figures_files/figure-gfm/gd-var-map-1.png)<!-- -->
-
 ``` r
 ggsave(filename = here("output", "publication_figs", "gd_var_map_fig.svg"),
        plot = gd_var_map,
@@ -910,8 +868,6 @@ resid_map <-
 resid_map
 ```
 
-![](publication_figures_files/figure-gfm/plot-resid-map-1.png)<!-- -->
-
 ``` r
 ggsave(filename = here("output", "publication_figs", "resid_map_fig.svg"),
        plot = resid_map,
@@ -921,7 +877,8 @@ ggsave(filename = here("output", "publication_figs", "resid_map_fig.svg"),
        unit = "cm")
 ```
 
-## Observed Maps
+Observed Maps
+-------------
 
 Map helpers
 
@@ -973,8 +930,6 @@ obs_2d_map <- suppressWarnings(plot_obs(df = spatial_df, resp = "combo")) + labs
 obs_2d_map
 ```
 
-![](publication_figures_files/figure-gfm/unnamed-chunk-33-1.png)<!-- -->
-
 Combined map
 
 ``` r
@@ -987,8 +942,6 @@ obs_combo_map <- obs_gdm_map / obs_gde_map / obs_2d_map + plot_annotation(
 ``` r
 obs_combo_map
 ```
-
-![](publication_figures_files/figure-gfm/unnamed-chunk-35-1.png)<!-- -->
 
 Write map to file
 
@@ -1034,7 +987,8 @@ ggsave(filename = here("output", "publication_figs", "supp_obs_maps.svg"),
        unit = "cm")
 ```
 
-## Full map figure
+Full map figure
+---------------
 
 Combination of the prediction and observed maps for the manuscript. Code
 from the `Prediction Maps` and `Observed Maps` sections needs to be run
@@ -1051,8 +1005,6 @@ full_combo_map <-
 full_combo_map
 ```
 
-![](publication_figures_files/figure-gfm/unnamed-chunk-38-1.png)<!-- -->
-
 Write to file
 
 ``` r
@@ -1064,7 +1016,8 @@ ggsave(filename = here("output", "publication_figs", "full_map_fig.svg"),
        unit = "cm")
 ```
 
-## Hotspot maps
+Hotspot maps
+------------
 
 Map helpers
 
@@ -1177,8 +1130,6 @@ hotspot_predicted <- ggplot() +
 hotspot_predicted
 ```
 
-![](publication_figures_files/figure-gfm/hotspot-pred-map-1.png)<!-- -->
-
 Observed hotspot map
 
 ``` r
@@ -1193,8 +1144,6 @@ hotspot_observed <- ggplot() +
 ``` r
 hotspot_observed
 ```
-
-![](publication_figures_files/figure-gfm/hotspot-obs-map-1.png)<!-- -->
 
 #### Coldspot
 
@@ -1240,8 +1189,6 @@ coldspot_predicted <- ggplot() +
 coldspot_predicted
 ```
 
-![](publication_figures_files/figure-gfm/coldspot-pred-map-1.png)<!-- -->
-
 Observed coldspot map
 
 ``` r
@@ -1256,8 +1203,6 @@ coldspot_observed <- ggplot() +
 ``` r
 coldspot_observed
 ```
-
-![](publication_figures_files/figure-gfm/unnamed-chunk-47-1.png)<!-- -->
 
 ### GDM
 
@@ -1275,8 +1220,6 @@ hotspot_predicted_gdm <- ggplot() +
 hotspot_predicted_gdm
 ```
 
-![](publication_figures_files/figure-gfm/unnamed-chunk-49-1.png)<!-- -->
-
 ``` r
 coldspot_predicted_gdm <- ggplot() +
   geom_sf(data = world_base_coast, fill = "transparent") +
@@ -1288,8 +1231,6 @@ coldspot_predicted_gdm <- ggplot() +
 ``` r
 coldspot_predicted_gdm
 ```
-
-![](publication_figures_files/figure-gfm/unnamed-chunk-51-1.png)<!-- -->
 
 #### Observed
 
@@ -1306,8 +1247,6 @@ hotspot_observed_gdm <- ggplot() +
 hotspot_observed_gdm
 ```
 
-![](publication_figures_files/figure-gfm/unnamed-chunk-53-1.png)<!-- -->
-
 ``` r
 coldspot_observed_gdm <- ggplot() +
   geom_sf(data = world_base_coast, fill = "transparent") +
@@ -1320,8 +1259,6 @@ coldspot_observed_gdm <- ggplot() +
 ``` r
 coldspot_observed_gdm
 ```
-
-![](publication_figures_files/figure-gfm/unnamed-chunk-55-1.png)<!-- -->
 
 ### GDE
 
@@ -1339,8 +1276,6 @@ hotspot_predicted_gde <- ggplot() +
 hotspot_predicted_gde
 ```
 
-![](publication_figures_files/figure-gfm/unnamed-chunk-57-1.png)<!-- -->
-
 ``` r
 coldspot_predicted_gde <- ggplot() +
   geom_sf(data = world_base_coast, fill = "transparent") +
@@ -1352,8 +1287,6 @@ coldspot_predicted_gde <- ggplot() +
 ``` r
 coldspot_predicted_gde
 ```
-
-![](publication_figures_files/figure-gfm/unnamed-chunk-59-1.png)<!-- -->
 
 #### Observed
 
@@ -1370,8 +1303,6 @@ hotspot_observed_gde <- ggplot() +
 hotspot_observed_gde
 ```
 
-![](publication_figures_files/figure-gfm/unnamed-chunk-61-1.png)<!-- -->
-
 ``` r
 coldspot_observed_gde <- ggplot() +
   geom_sf(data = world_base_coast, fill = "transparent") +
@@ -1384,8 +1315,6 @@ coldspot_observed_gde <- ggplot() +
 ``` r
 coldspot_observed_gde
 ```
-
-![](publication_figures_files/figure-gfm/unnamed-chunk-63-1.png)<!-- -->
 
 #### Combo
 
@@ -1411,8 +1340,6 @@ combo_hs_cs_map <-
 combo_hs_cs_map
 ```
 
-![](publication_figures_files/figure-gfm/unnamed-chunk-65-1.png)<!-- -->
-
 Write to file
 
 ``` r
@@ -1436,8 +1363,6 @@ ggplot() +
   theme_insects()
 ```
 
-![](publication_figures_files/figure-gfm/unnamed-chunk-67-1.png)<!-- -->
-
 ``` r
 ggplot(data = spatial_df, aes(x = gde, 
                              y = gdm)) +
@@ -1446,11 +1371,11 @@ ggplot(data = spatial_df, aes(x = gde,
   theme_insects()
 ```
 
-![](publication_figures_files/figure-gfm/unnamed-chunk-68-1.png)<!-- -->
+Supp Figs
+=========
 
-# Supp Figs
-
-## Order outliers
+Order outliers
+--------------
 
 Read in data and filter, removing outlier orders. I’m only considering
 the outlier data set that retains the same filtering regime as the
@@ -1493,13 +1418,6 @@ gd_all <- bind_rows(
 glimpse(gd_all)
 ```
 
-    ## Rows: 327
-    ## Columns: 4
-    ## $ cell    <dbl> 636, 643, 742, 943, 944, 1292, 1294, 1297, 1356, 1357, 1470, 1…
-    ## $ hill    <dbl> 0.4454309, 0.4622727, 0.4581350, 0.5744267, 0.5767245, 0.48639…
-    ## $ avg_pi  <dbl> 0.04147382, 0.04450441, 0.04649514, 0.05429685, 0.05352699, 0.…
-    ## $ min_otu <chr> "Top 3 orders removed\n(N=82)", "Top 3 orders removed\n(N=82)"…
-
 Boxplots comparing the GDE and GDM distributions.
 
 ``` r
@@ -1528,8 +1446,6 @@ all_box <- gdm_box / gde_box +
 ``` r
 all_box
 ```
-
-![](publication_figures_files/figure-gfm/unnamed-chunk-71-1.png)<!-- -->
 
 Save plot to file
 
@@ -1563,65 +1479,14 @@ cohen_gde <- cohens_d(hill ~ min_otu, data = gd_welch, pooled_sd = FALSE)
 cohen_gdm <- cohens_d(avg_pi ~ min_otu, data = gd_welch, pooled_sd = FALSE)
 
 welch_gde
-```
-
-    ## 
-    ##  Welch Two Sample t-test
-    ## 
-    ## data:  hill by min_otu
-    ## t = -1.863, df = 131.45, p-value = 0.0647
-    ## alternative hypothesis: true difference in means between group Original
-    ## (N=245) and group Top 3 orders removed
-    ## (N=82) is not equal to 0
-    ## 95 percent confidence interval:
-    ##  -0.0301628484  0.0009047472
-    ## sample estimates:
-    ##            mean in group Original\n(N=245) 
-    ##                                  0.5215877 
-    ## mean in group Top 3 orders removed\n(N=82) 
-    ##                                  0.5362168
-
-``` r
 cohen_gde
-```
 
-    ## Cohen's d |        95% CI
-    ## -------------------------
-    ## -0.24     | [-0.50, 0.01]
-    ## 
-    ## - Estimated using un-pooled SD.
-
-``` r
 welch_gdm
-```
-
-    ## 
-    ##  Welch Two Sample t-test
-    ## 
-    ## data:  avg_pi by min_otu
-    ## t = -4.333, df = 122.44, p-value = 3.033e-05
-    ## alternative hypothesis: true difference in means between group Original
-    ## (N=245) and group Top 3 orders removed
-    ## (N=82) is not equal to 0
-    ## 95 percent confidence interval:
-    ##  -0.005421859 -0.002021402
-    ## sample estimates:
-    ##            mean in group Original\n(N=245) 
-    ##                                 0.05298152 
-    ## mean in group Top 3 orders removed\n(N=82) 
-    ##                                 0.05670315
-
-``` r
 cohen_gdm
 ```
 
-    ## Cohen's d |         95% CI
-    ## --------------------------
-    ## -0.57     | [-0.84, -0.30]
-    ## 
-    ## - Estimated using un-pooled SD.
-
-## Model selection fig
+Model selection fig
+-------------------
 
 ### GDE
 
@@ -1635,8 +1500,6 @@ Plot the validation results relative to the full model
 # plot the validation results, this time relative to the full model
 plot(cv_mult_reg_frz, stats = c('elpd', 'rmse'), deltas = TRUE)
 ```
-
-![](publication_figures_files/figure-gfm/unnamed-chunk-75-1.png)<!-- -->
 
 Write to file.
 
@@ -1663,8 +1526,6 @@ Plot the validation results relative to the full model
 plot(cv_mult_gdm, stats = c('elpd', 'rmse'), deltas = TRUE)
 ```
 
-![](publication_figures_files/figure-gfm/unnamed-chunk-78-1.png)<!-- -->
-
 Write to file.
 
 ``` r
@@ -1677,7 +1538,8 @@ plot(cv_mult_gdm, stats = c('elpd', 'rmse'), deltas = TRUE)
 dev.off()
 ```
 
-## MESS Maps
+MESS Maps
+---------
 
 Multivariate Environmental Similarity Surfaces comparing the
 environmental space in the observed data compared to the global
@@ -1720,8 +1582,6 @@ mess_gde_map <- map_mess(mess_gde_sf_filt) +
 mess_gde_map
 ```
 
-![](publication_figures_files/figure-gfm/unnamed-chunk-81-1.png)<!-- -->
-
 ### GDM
 
 Read in and filter data.
@@ -1745,8 +1605,6 @@ mess_gdm_map <- map_mess(mess_gdm_sf_filt) +
 mess_gdm_map
 ```
 
-![](publication_figures_files/figure-gfm/unnamed-chunk-83-1.png)<!-- -->
-
 ### Final figure
 
 ``` r
@@ -1760,8 +1618,6 @@ mess_combo <- mess_gdm_map / mess_gde_map + plot_annotation(
 mess_combo
 ```
 
-![](publication_figures_files/figure-gfm/unnamed-chunk-85-1.png)<!-- -->
-
 Write to file.
 
 ``` r
@@ -1773,7 +1629,8 @@ ggsave(filename = here("output", "publication_figs", "supp_mess_fig.svg"),
        unit = "cm")
 ```
 
-## Predictors
+Predictors
+----------
 
 Map helpers
 
@@ -1843,8 +1700,6 @@ predictor_maps_combo <-
 predictor_maps_combo
 ```
 
-![](publication_figures_files/figure-gfm/unnamed-chunk-90-1.png)<!-- -->
-
 Write to a file
 
 ``` r
@@ -1856,7 +1711,8 @@ ggsave(filename = here("output", "publication_figs", "supp_predictor_maps.svg"),
        unit = "cm")
 ```
 
-## Per-order GD
+Per-order GD
+------------
 
 Map helpers
 
@@ -1988,15 +1844,6 @@ t_df <- bind_rows(
 t_df |> knitr::kable()
 ```
 
-|    mean_x |    mean_y | diff_in_means |   upper_95 |   lower_95 | t_statistic |       df | p_value | order       | sumstat |
-|----------:|----------:|--------------:|-----------:|-----------:|------------:|---------:|--------:|:------------|:--------|
-| 0.5133740 | 0.5215877 |    -0.0082138 | -0.0207123 |  0.0042847 |   -1.291665 | 433.4287 |   0.197 | Lepidoptera | GDE     |
-| 0.5731997 | 0.5215877 |     0.0516119 |  0.0371205 |  0.0661034 |    7.007978 | 308.6593 |   0.000 | Diptera     | GDE     |
-| 0.4830033 | 0.5215877 |    -0.0385845 | -0.0540466 | -0.0231224 |   -4.910263 | 307.4258 |   0.000 | Hymenoptera | GDE     |
-| 0.0472627 | 0.0529815 |    -0.0057188 | -0.0068499 | -0.0045878 |   -9.935545 | 469.2957 |   0.000 | Lepidoptera | GDM     |
-| 0.0587873 | 0.0529815 |     0.0058057 |  0.0044130 |  0.0071985 |    8.200703 | 325.1528 |   0.000 | Diptera     | GDM     |
-| 0.0499930 | 0.0529815 |    -0.0029885 | -0.0047034 | -0.0012737 |   -3.430126 | 288.2808 |   0.001 | Hymenoptera | GDM     |
-
 These are maps where the minimum and maximum GDM/GDE are scaled to the
 minimum and maximum across all data sets.
 
@@ -2013,8 +1860,6 @@ maps_scaled_gdm <-
 ``` r
 maps_scaled_gdm
 ```
-
-![](publication_figures_files/figure-gfm/plot-outlier-maps-scaled-1.png)<!-- -->
 
 ``` r
 ggsave(filename = here("output", "publication_figs", "per_order_gdm.svg"),
@@ -2037,8 +1882,6 @@ maps_scaled_gde <- obs_map_scaled_gde  /
 ``` r
 maps_scaled_gde
 ```
-
-![](publication_figures_files/figure-gfm/plot-maps-scaled-gde-1.png)<!-- -->
 
 ``` r
 ggsave(filename = here("output", "publication_figs", "per_order_gde.svg"),
@@ -2064,8 +1907,6 @@ maps_independent_gdm <- obs_map_gdm /
 maps_independent_gdm
 ```
 
-![](publication_figures_files/figure-gfm/plot-maps-independent-gdm-1.png)<!-- -->
-
 ``` r
 ggsave(filename = here("output", "publication_figs", "per_order_gdm_independent.svg"),
        plot = maps_independent_gdm,
@@ -2087,8 +1928,6 @@ maps_independent_gde <- obs_map_gde /
 ``` r
 maps_independent_gde
 ```
-
-![](publication_figures_files/figure-gfm/plot-maps-independent-gde-1.png)<!-- -->
 
 ``` r
 ggsave(filename = here("output", "publication_figs", "per_order_gde_independent.svg"),
@@ -2138,7 +1977,8 @@ ggsave(filename = here("output", "publication_figs", "outlier_maps_ind.svg"),
        unit = "cm")
 ```
 
-## Number of cells per OTU
+Number of cells per OTU
+-----------------------
 
 ``` r
 cell_df <- read_sf(here("output", "spreadsheets", "full_sf.geojson"), crs = crs_behr) |>
@@ -2186,8 +2026,6 @@ num_cell_otu_plot <- ggplot() +
 num_cell_otu_plot
 ```
 
-![](publication_figures_files/figure-gfm/plot-num-cell-otu-1.png)<!-- -->
-
 ``` r
 ggsave(filename = here("output", "publication_figs", "num_cell_otu_plot.svg"),
        plot = num_cell_otu_plot,
@@ -2197,7 +2035,8 @@ ggsave(filename = here("output", "publication_figs", "num_cell_otu_plot.svg"),
        unit = "cm")
 ```
 
-## Per-order sampling
+Per-order sampling
+------------------
 
 Map helpers
 
@@ -2299,8 +2138,6 @@ combo_prop_map <-
 combo_prop_map
 ```
 
-![](publication_figures_files/figure-gfm/unnamed-chunk-109-1.png)<!-- -->
-
 Write to file
 
 ``` r
@@ -2312,7 +2149,8 @@ ggsave(filename = here("output", "publication_figs", "order_proportions.svg"),
        unit = "cm")
 ```
 
-## Prior-posterior overlap
+Prior-posterior overlap
+-----------------------
 
 Visualizing and calculating the percent overlap between the prior and
 posterior for regression coefficients. I stitch them together in
@@ -2366,7 +2204,8 @@ MCMCvis::MCMCtrace(model_gdm$model,
                    )
 ```
 
-## Extreme cell resampling
+Extreme cell resampling
+-----------------------
 
 Read in data
 
@@ -2453,8 +2292,6 @@ resample_plot_gde <- gr_gde +
 resample_plot_gde
 ```
 
-![](publication_figures_files/figure-gfm/unnamed-chunk-117-1.png)<!-- -->
-
 ``` r
 gr_gdm <- gdm_res_df |> 
   mutate(cell = as.factor(cell)) |> 
@@ -2482,8 +2319,6 @@ resample_plot_gdm <- gr_gdm +
 resample_plot_gdm
 ```
 
-![](publication_figures_files/figure-gfm/unnamed-chunk-119-1.png)<!-- -->
-
 Combo plot
 
 ``` r
@@ -2494,8 +2329,6 @@ combo_resample <- resample_plot_gdm / resample_plot_gde + plot_annotation(tag_le
 combo_resample
 ```
 
-![](publication_figures_files/figure-gfm/unnamed-chunk-121-1.png)<!-- -->
-
 ``` r
 ggsave(filename = here("output", "publication_figs", "extreme_resample.svg"),
        plot = combo_resample,
@@ -2505,7 +2338,8 @@ ggsave(filename = here("output", "publication_figs", "extreme_resample.svg"),
        unit = "cm")
 ```
 
-## Obs vs predicted
+Obs vs predicted
+----------------
 
 Observed vs predicted plots for all OTU thresholds
 
@@ -2541,7 +2375,8 @@ ggsave(filename = here("output", "publication_figs", "obs-vs-pred.pdf"),
        unit = "cm")
 ```
 
-## Sampling bias
+Sampling bias
+-------------
 
 Per the great suggestion by Rob Anderson (comment here for posterity):
 \> I wonder what you can do to test for artifacts of sampling bias and
@@ -2574,18 +2409,6 @@ pi_100 <- raw_pi |>
 cor.test(pi_100$num_ind, pi_100$pi)
 ```
 
-    ## 
-    ##  Pearson's product-moment correlation
-    ## 
-    ## data:  pi_100$num_ind and pi_100$pi
-    ## t = 11.846, df = 168929, p-value < 2.2e-16
-    ## alternative hypothesis: true correlation is not equal to 0
-    ## 95 percent confidence interval:
-    ##  0.02404356 0.03357291
-    ## sample estimates:
-    ##        cor 
-    ## 0.02880889
-
 ``` r
 total_ni_r_gde <- tidy_cor(full_sf_100$num_ind, full_sf_100$gde, var = "# Ind", sumstat = "GDE")
 
@@ -2615,15 +2438,6 @@ all_cor_test <- bind_rows(
 all_cor_test |> 
   knitr::kable()
 ```
-
-|        rho |   upper_95 |  lower_95 | t_statistic |  df | p_value | var           | sumstat |
-|-----------:|-----------:|----------:|------------:|----:|--------:|:--------------|:--------|
-|  0.0641118 | -0.0617129 | 0.1879305 |   1.0014637 | 243 |   0.318 | \# Ind        | GDE     |
-|  0.0324016 | -0.0933061 | 0.1570925 |   0.5053566 | 243 |   0.614 | \# Ind        | GDM     |
-|  0.0604494 | -0.0653747 | 0.1843813 |   0.9440389 | 243 |   0.346 | Median \# Ind | GDE     |
-| -0.0299327 | -0.1546812 | 0.0957553 |  -0.4668139 | 243 |   0.641 | Median \# Ind | GDM     |
-|  0.0801048 | -0.0456826 | 0.2033917 |   1.2527363 | 243 |   0.212 | \# OTU        | GDE     |
-|  0.0425045 | -0.0832679 | 0.1669440 |   0.6631786 | 243 |   0.508 | \# OTU        | GDM     |
 
 ### Correlation plots
 
@@ -2672,8 +2486,6 @@ nco_plot <- num_cell_otu |>
 
 nco_plot
 ```
-
-![](publication_figures_files/figure-gfm/num-cell-per-otu-1.png)<!-- -->
 
 ``` r
 ggsave(filename = here("output", "publication_figs", "num-cell-otu.svg"),

@@ -10,7 +10,7 @@ crs_behr <- crs_behr <- "+proj=cea +lon_0=0 +lat_ts=30 +x_0=0 +y_0=0 +datum=WGS8
 ###### hill_calc ########
 
 ## Get one hill number from a list of genetic distances. Original python code written by Isaac Overcast, with slight modifications (correct = TRUE implemented by CMF)
-## dists are the OTU Tajima's pi
+## dists are a vector of the OTU Tajima's pi
 ## order is the q order of the Hill number
 ## correct indicates if you want to correct for species richness or not. Default is TRUE
 hill_calc <- function(dists, order = 1, correct = TRUE) { 
@@ -725,6 +725,7 @@ plot_samp <- function(x, resp = "gdm", pred = "num_ind") {
   x_lab <- case_when(
     pred == "num_ind" ~ "Number of individuals", 
     pred == "num_otu" ~ "Number of OTUs",
+    pred == "num_order" ~ "Number of orders",
     pred == "lat" ~ "Latitude")
   
   ggplot(data = x, aes_string(x = pred, y = resp)) +

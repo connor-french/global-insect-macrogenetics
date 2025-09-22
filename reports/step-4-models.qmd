@@ -401,7 +401,6 @@ glmm_pred_gdm <- read_rds(here("output", "spreadsheets", "glmm_pred_gdm.rds"))
 
 ```
 
-
 ```{r}
 #| label: glmm-pred
 #| eval: false
@@ -418,8 +417,6 @@ glmm_pred_gdm <- map(glmm_gdm, predict)
 write_rds(glmm_pred_gde, here("output", "spreadsheets", "glmm_pred_gde.rds"))
 write_rds(glmm_pred_gdm, here("output", "spreadsheets", "glmm_pred_gdm.rds"))
 ```
-
-
 
 ```{r}
 #| label: sac-glmmfields
@@ -1331,7 +1328,6 @@ world_base_coast <- rnaturalearth::ne_coastline(scale = "large", returnclass = "
   st_join(world_base_map) |> 
   filter(continent != "Antarctica")
 ```
-
 
 Multivariate Environmental Similarity Surfaces for all OTU thresholds/models.
 
