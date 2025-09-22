@@ -1,14 +1,17 @@
 # Code for the manuscript: **Global determinants of insect genetic diversity**
 
-Currently on bioRxiv:
+To cite this code:  
+> Connor M French, Laura D Bertola, Ana C Carnaval, Evan P Economo, Jamie M Kass, David J Lohman, Katharine A Marske, Rudolf Meier, Isaac Overcast, Andrew J. Rominger, Phillip Staniczenko, Michael J Hickerson. Global determinants of insect genetic diversity. https://github.com/connor-french/global-insect-macrogenetics/. [10.5281/zenodo.8125548](https://doi.org/10.5281/zenodo.8125548). 2023.
+
+Open access in Nature Communications:
 > **Global determinants of insect genetic diversity**\
-Connor M French, Laura D Bertola, Ana C Carnaval, Evan P Economo, Jamie M Kass, David J Lohman, Katharine A Marske, Rudolf Meier, Isaac Overcast, Andrew J. Rominger, Phillip Staniczenko, Michael J Hickerson *bioRxiv* 2022.02.09.479762; doi: <https://doi.org/10.1101/2022.02.09.479762>
+Connor M French, Laura D Bertola, Ana C Carnaval, Evan P Economo, Jamie M Kass, David J Lohman, Katharine A Marske, Rudolf Meier, Isaac Overcast, Andrew J. Rominger, Phillip Staniczenko, Michael J Hickerson Nature Communications 14, 5276 (2023); doi: <https://doi.org/10.1038/s41467-023-40936-0>
 
 Where to find things:
 
 ## Data
 
-All climate data is available online at the links provided in Supplementary Table 1 or `meta/raster_list.csv`. The BOLD insect data is available at **figshare_link** as `bold_data_insects.txt`, which belongs in the `data/` folder.
+All climate data is available online at the links provided in Supplementary Table 1 or `meta/raster_list.csv`. The BOLD insect data is available on [figshare](https://doi.org/10.6084/m9.figshare.c.6563836.v1) as `bold_data_insects.txt`, which belongs in the `data/` folder.
 
 The only data subfolders that come pre-populated are `data/templates`, which contains raster templates for aggregating raw climate data, and `data/invasive`, which contains spreadsheets with invasive species information for filtering out invasive species from the data set.
 
