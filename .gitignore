@@ -44,7 +44,7 @@ rsconnect/
 # data
 data/climate_raw/*
 data/climate_agg/*
-data/climate_poly/*
+data/climate_poly/Ecoregions2017/*
 data/bold_data_insects.db
 data/bold_data_insects.txt
 

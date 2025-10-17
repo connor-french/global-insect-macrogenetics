@@ -1,0 +1,15 @@
+variable
+terrain_medium_elevation_median
+terrain_medium_elevation_sd
+current_medium_bio_13
+current_medium_bio_14
+current_medium_bio_15
+current_medium_bio_2
+current_medium_bio_5
+ghh_medium_std_dev
+ghh_medium_variance
+dhi_medium_cum
+dhi_medium_var
+human_medium_gHM
+stability_precip_medium
+stability_temp_medium

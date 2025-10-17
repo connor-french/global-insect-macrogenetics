@@ -853,7 +853,9 @@ combo_resample
 ## Least restrictive data set
 
 
-Read in and combine data  
+Read in and combine data.  
+
+*** output/spreadsheets/keep_nocorr_vars.csv was created by hand, using the variables retained in corr_final.csv in addition to two stability variables that were not included in the final analysis. It is now provided in `reports/keep_nocorr_vars.csv` for completeness. ***
 
 ```{r}
 med_3_df <- read_csv(here("output", "spreadsheets", "cell_medium_3_10_sumstats.csv"))
